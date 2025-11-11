@@ -131,13 +131,12 @@
         </div>
 
         <div class="control-group">
-            <label>Isoline Interval: <span class="value-display" id="intervalValue">10</span></label>
-            <input type="range" id="isolineInterval" min="5" max="30" value="10" step="5">
+            <label>Seed:</label>
+            <input type="number" id="seed" value="12345">
         </div>
 
         <div class="control-group">
-            <label>Seed:</label>
-            <input type="number" id="seed" value="12345">
+            <label style="color: #888; font-style: italic;">Isolines at: 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5</label>
         </div>
 
         <button id="generateBtn">Generate Terrain</button>
@@ -155,6 +154,7 @@
         let width, height;
         let points = [];
         let edges = [];
+        let triangles = [];
         let isolines = [];
         let terrain = null;
         let showPoints = true;
@@ -515,88 +515,66 @@
             }
         }
 
-        // Marching squares for isoline generation
-        function generateIsolines(points, interval) {
+        // Triangle-based isoline generation
+        function generateIsolines(triangles, points) {
             const lines = [];
-            const gridSize = 20;
-            const cols = Math.ceil(width / gridSize);
-            const rows = Math.ceil(height / gridSize);
 
-            // Create elevation grid
-            const grid = [];
-            for (let y = 0; y < rows; y++) {
-                grid[y] = [];
-                for (let x = 0; x < cols; x++) {
-                    grid[y][x] = getElevation(x * gridSize, y * gridSize);
-                }
-            }
+            // Isoline levels are at X.5 (1.5, 2.5, 3.5, ..., 9.5)
+            const isolineLevels = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5];
 
-            // Generate isolines for each level
-            const levels = [];
-            for (let level = interval; level < 100; level += interval) {
-                levels.push(level);
-            }
+            // Process each triangle
+            for (const triangle of triangles) {
+                const [p0, p1, p2] = triangle;
 
-            for (const level of levels) {
-                const segments = [];
+                // Get normalized elevations (1-10)
+                const e0 = p0.normalizedElevation;
+                const e1 = p1.normalizedElevation;
+                const e2 = p2.normalizedElevation;
 
-                for (let y = 0; y < rows - 1; y++) {
-                    for (let x = 0; x < cols - 1; x++) {
-                        const x0 = x * gridSize;
-                        const y0 = y * gridSize;
+                // For each isoline level
+                for (const level of isolineLevels) {
+                    // Find which edges this isoline crosses
+                    const crossings = [];
 
-                        const v0 = grid[y][x];
-                        const v1 = grid[y][x + 1];
-                        const v2 = grid[y + 1][x + 1];
-                        const v3 = grid[y + 1][x];
+                    // Check edge 0 (p0 -> p1)
+                    if ((e0 < level && e1 > level) || (e0 > level && e1 < level)) {
+                        const t = (level - e0) / (e1 - e0);
+                        crossings.push({
+                            x: p0.x + t * (p1.x - p0.x),
+                            y: p0.y + t * (p1.y - p0.y),
+                            edge: 0
+                        });
+                    }
 
-                        let caseIndex = 0;
-                        if (v0 > level) caseIndex |= 1;
-                        if (v1 > level) caseIndex |= 2;
-                        if (v2 > level) caseIndex |= 4;
-                        if (v3 > level) caseIndex |= 8;
+                    // Check edge 1 (p1 -> p2)
+                    if ((e1 < level && e2 > level) || (e1 > level && e2 < level)) {
+                        const t = (level - e1) / (e2 - e1);
+                        crossings.push({
+                            x: p1.x + t * (p2.x - p1.x),
+                            y: p1.y + t * (p2.y - p1.y),
+                            edge: 1
+                        });
+                    }
 
-                        if (caseIndex === 0 || caseIndex === 15) continue;
+                    // Check edge 2 (p2 -> p0)
+                    if ((e2 < level && e0 > level) || (e2 > level && e0 < level)) {
+                        const t = (level - e2) / (e0 - e2);
+                        crossings.push({
+                            x: p2.x + t * (p0.x - p2.x),
+                            y: p2.y + t * (p0.y - p2.y),
+                            edge: 2
+                        });
+                    }
 
-                        const lerp = (a, b, t) => a + (b - a) * t;
-
-                        const p = [];
-
-                        // Edge 0 (top)
-                        if ([1, 3, 4, 5, 6, 7, 12, 13, 14].includes(caseIndex)) {
-                            const t = (level - v0) / (v1 - v0);
-                            p.push({ x: lerp(x0, x0 + gridSize, t), y: y0, level });
-                        }
-
-                        // Edge 1 (right)
-                        if ([2, 3, 6, 7, 8, 9, 10, 11, 14].includes(caseIndex)) {
-                            const t = (level - v1) / (v2 - v1);
-                            p.push({ x: x0 + gridSize, y: lerp(y0, y0 + gridSize, t), level });
-                        }
-
-                        // Edge 2 (bottom)
-                        if ([4, 5, 6, 7, 9, 10, 11, 12, 13].includes(caseIndex)) {
-                            const t = (level - v3) / (v2 - v3);
-                            p.push({ x: lerp(x0, x0 + gridSize, t), y: y0 + gridSize, level });
-                        }
-
-                        // Edge 3 (left)
-                        if ([1, 2, 8, 9, 10, 11, 12, 13, 14].includes(caseIndex)) {
-                            const t = (level - v0) / (v3 - v0);
-                            p.push({ x: x0, y: lerp(y0, y0 + gridSize, t), level });
-                        }
-
-                        // Add segments
-                        if (p.length >= 2) {
-                            segments.push({ p1: p[0], p2: p[1], level });
-                            if (p.length === 4) {
-                                segments.push({ p1: p[2], p2: p[3], level });
-                            }
-                        }
+                    // If we have exactly 2 crossings, create an isoline segment
+                    if (crossings.length === 2) {
+                        lines.push({
+                            p1: { x: crossings[0].x, y: crossings[0].y },
+                            p2: { x: crossings[1].x, y: crossings[1].y },
+                            level: level
+                        });
                     }
                 }
-
-                lines.push(...segments);
             }
 
             return lines;
@@ -606,8 +584,7 @@
         function drawPoints() {
             ctx.fillStyle = '#fff';
             for (const point of points) {
-                const elevation = point.elevation;
-                const color = getElevationColor(elevation);
+                const color = getElevationColor(point.normalizedElevation);
                 ctx.fillStyle = color;
                 ctx.beginPath();
                 ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
@@ -638,19 +615,20 @@
             }
         }
 
-        function getElevationColor(elevation) {
+        function getElevationColor(normalizedElevation) {
+            // normalizedElevation is 1-10
             const colors = [
-                { val: 0, color: [0, 0, 128] },      // Deep blue
-                { val: 20, color: [30, 144, 255] },  // Blue
-                { val: 40, color: [34, 139, 34] },   // Green
-                { val: 60, color: [255, 255, 0] },   // Yellow
-                { val: 80, color: [139, 69, 19] },   // Brown
-                { val: 100, color: [255, 255, 255] } // White
+                { val: 1, color: [0, 0, 128] },      // Deep blue
+                { val: 3, color: [30, 144, 255] },   // Blue
+                { val: 5, color: [34, 139, 34] },    // Green
+                { val: 7, color: [255, 255, 0] },    // Yellow
+                { val: 9, color: [139, 69, 19] },    // Brown
+                { val: 10, color: [255, 255, 255] }  // White
             ];
 
             for (let i = 0; i < colors.length - 1; i++) {
-                if (elevation >= colors[i].val && elevation <= colors[i + 1].val) {
-                    const t = (elevation - colors[i].val) / (colors[i + 1].val - colors[i].val);
+                if (normalizedElevation >= colors[i].val && normalizedElevation <= colors[i + 1].val) {
+                    const t = (normalizedElevation - colors[i].val) / (colors[i + 1].val - colors[i].val);
                     const r = Math.floor(colors[i].color[0] + (colors[i + 1].color[0] - colors[i].color[0]) * t);
                     const g = Math.floor(colors[i].color[1] + (colors[i + 1].color[1] - colors[i].color[1]) * t);
                     const b = Math.floor(colors[i].color[2] + (colors[i + 1].color[2] - colors[i].color[2]) * t);
@@ -679,7 +657,6 @@
             const roughness = parseFloat(document.getElementById('roughness').value);
             const scale = parseFloat(document.getElementById('terrainScale').value);
             const octaves = parseInt(document.getElementById('octaves').value);
-            const interval = parseFloat(document.getElementById('isolineInterval').value);
             const seed = parseInt(document.getElementById('seed').value);
 
             // Generate points
@@ -693,26 +670,38 @@
             const generator = new TerrainGenerator(width, height, seed);
             terrain = generator.generate(scale, octaves, roughness);
 
-            // Assign elevations to points
+            // Assign elevations to points and normalize to 1-10
+            let minElev = Infinity;
+            let maxElev = -Infinity;
+
             for (const point of points) {
                 point.elevation = getElevation(point.x, point.y);
+                minElev = Math.min(minElev, point.elevation);
+                maxElev = Math.max(maxElev, point.elevation);
+            }
+
+            // Normalize and round elevations to integers 1-10
+            for (const point of points) {
+                const normalized = ((point.elevation - minElev) / (maxElev - minElev)) * 9 + 1;
+                point.normalizedElevation = Math.round(normalized);
             }
 
             // Create Delaunay triangulation
             const delaunay = new Delaunay(points);
             edges = delaunay.edges;
+            triangles = delaunay.triangles;
 
             // Calculate edge steepness
             for (const edge of edges) {
                 const dx = edge.p2.x - edge.p1.x;
                 const dy = edge.p2.y - edge.p1.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
-                const elevationDiff = Math.abs(edge.p2.elevation - edge.p1.elevation);
+                const elevationDiff = Math.abs(edge.p2.normalizedElevation - edge.p1.normalizedElevation);
                 edge.steepness = distance > 0 ? elevationDiff / distance : 0;
             }
 
-            // Generate isolines
-            isolines = generateIsolines(points, interval);
+            // Generate isolines using triangle-based approach
+            isolines = generateIsolines(triangles, points);
 
             render();
         }
@@ -735,7 +724,7 @@
                     tooltip.style.display = 'block';
                     tooltip.style.left = e.clientX + 10 + 'px';
                     tooltip.style.top = e.clientY + 10 + 'px';
-                    tooltip.innerHTML = `Elevation: ${point.elevation.toFixed(2)}`;
+                    tooltip.innerHTML = `Elevation: ${point.normalizedElevation} (${point.elevation.toFixed(2)})`;
                     found = true;
                     break;
                 }
@@ -802,10 +791,6 @@
 
         document.getElementById('octaves').addEventListener('input', (e) => {
             document.getElementById('octavesValue').textContent = e.target.value;
-        });
-
-        document.getElementById('isolineInterval').addEventListener('input', (e) => {
-            document.getElementById('intervalValue').textContent = e.target.value;
         });
 
         document.getElementById('generateBtn').addEventListener('click', generate);
