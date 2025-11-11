@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fractal Terrain Isoline Visualization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 300px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+            color: #aaa;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        input[type="number"] {
+            width: 100%;
+            padding: 5px;
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 4px;
+        }
+        select {
+            width: 100%;
+            padding: 5px;
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 4px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #4CAF50;
+            border: none;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .value-display {
+            display: inline-block;
+            color: #4CAF50;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        #tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            border: 1px solid #4CAF50;
+        }
+        h3 {
+            margin-bottom: 15px;
+            font-size: 16px;
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="controls">
+        <h3>Fractal Terrain Isolines</h3>
+
+        <div class="control-group">
+            <label>Point Distribution:</label>
+            <select id="distributionType">
+                <option value="poisson">Poisson Disc Sampling</option>
+                <option value="hex">Hexagonal Grid</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Number of Points: <span class="value-display" id="pointsValue">500</span></label>
+            <input type="range" id="numPoints" min="100" max="2000" value="500" step="50">
+        </div>
+
+        <div class="control-group">
+            <label>Terrain Roughness: <span class="value-display" id="roughnessValue">0.7</span></label>
+            <input type="range" id="roughness" min="0.1" max="1.5" value="0.7" step="0.1">
+        </div>
+
+        <div class="control-group">
+            <label>Terrain Scale: <span class="value-display" id="scaleValue">200</span></label>
+            <input type="range" id="terrainScale" min="50" max="500" value="200" step="10">
+        </div>
+
+        <div class="control-group">
+            <label>Octaves: <span class="value-display" id="octavesValue">4</span></label>
+            <input type="range" id="octaves" min="1" max="8" value="4" step="1">
+        </div>
+
+        <div class="control-group">
+            <label>Isoline Interval: <span class="value-display" id="intervalValue">10</span></label>
+            <input type="range" id="isolineInterval" min="5" max="30" value="10" step="5">
+        </div>
+
+        <div class="control-group">
+            <label>Seed:</label>
+            <input type="number" id="seed" value="12345">
+        </div>
+
+        <button id="generateBtn">Generate Terrain</button>
+        <button id="toggleView" style="background: #2196F3;">Toggle Points/Isolines</button>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <script>
+        // Canvas setup
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const tooltip = document.getElementById('tooltip');
+
+        let width, height;
+        let points = [];
+        let edges = [];
+        let isolines = [];
+        let terrain = null;
+        let showPoints = true;
+
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Seeded random number generator
+        class Random {
+            constructor(seed) {
+                this.seed = seed;
+            }
+            next() {
+                this.seed = (this.seed * 9301 + 49297) % 233280;
+                return this.seed / 233280;
+            }
+        }
+
+        // Poisson Disc Sampling
+        function poissonDiscSampling(width, height, numPoints) {
+            const radius = Math.sqrt((width * height) / numPoints) * 0.8;
+            const k = 30;
+            const cellSize = radius / Math.sqrt(2);
+            const gridWidth = Math.ceil(width / cellSize);
+            const gridHeight = Math.ceil(height / cellSize);
+            const grid = new Array(gridWidth * gridHeight);
+            const active = [];
+            const points = [];
+
+            function randomPoint() {
+                return {
+                    x: Math.random() * width,
+                    y: Math.random() * height
+                };
+            }
+
+            function gridIndex(x, y) {
+                const i = Math.floor(x / cellSize);
+                const j = Math.floor(y / cellSize);
+                return i + j * gridWidth;
+            }
+
+            function tooClose(x, y) {
+                const i = Math.floor(x / cellSize);
+                const j = Math.floor(y / cellSize);
+
+                for (let di = -2; di <= 2; di++) {
+                    for (let dj = -2; dj <= 2; dj++) {
+                        const ni = i + di;
+                        const nj = j + dj;
+                        if (ni >= 0 && ni < gridWidth && nj >= 0 && nj < gridHeight) {
+                            const idx = ni + nj * gridWidth;
+                            const neighbor = grid[idx];
+                            if (neighbor) {
+                                const dx = neighbor.x - x;
+                                const dy = neighbor.y - y;
+                                if (dx * dx + dy * dy < radius * radius) {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+                return false;
+            }
+
+            const first = randomPoint();
+            active.push(first);
+            points.push(first);
+            grid[gridIndex(first.x, first.y)] = first;
+
+            while (active.length > 0 && points.length < numPoints) {
+                const idx = Math.floor(Math.random() * active.length);
+                const point = active[idx];
+                let found = false;
+
+                for (let i = 0; i < k; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const r = radius + Math.random() * radius;
+                    const x = point.x + r * Math.cos(angle);
+                    const y = point.y + r * Math.sin(angle);
+
+                    if (x >= 0 && x < width && y >= 0 && y < height && !tooClose(x, y)) {
+                        const newPoint = { x, y };
+                        active.push(newPoint);
+                        points.push(newPoint);
+                        grid[gridIndex(x, y)] = newPoint;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    active.splice(idx, 1);
+                }
+            }
+
+            return points;
+        }
+
+        // Hexagonal grid generation
+        function hexagonalGrid(width, height, numPoints) {
+            const points = [];
+            const area = width * height;
+            const hexArea = area / numPoints;
+            const radius = Math.sqrt(hexArea / (3 * Math.sqrt(3) / 2));
+
+            const dx = radius * 3 / 2;
+            const dy = radius * Math.sqrt(3);
+
+            let offsetY = 0;
+            for (let y = 0; y < height + dy; y += dy) {
+                let offsetX = (offsetY % 2) * dx / 2;
+                for (let x = 0; x < width + dx; x += dx) {
+                    const px = x + offsetX;
+                    const py = y;
+                    if (px >= 0 && px < width && py >= 0 && py < height) {
+                        points.push({ x: px, y: py });
+                    }
+                }
+                offsetY++;
+            }
+
+            return points;
+        }
+
+        // Fractal terrain generation using multi-octave Perlin-like noise
+        class TerrainGenerator {
+            constructor(width, height, seed) {
+                this.width = width;
+                this.height = height;
+                this.random = new Random(seed);
+                this.permutation = this.generatePermutation();
+            }
+
+            generatePermutation() {
+                const p = [];
+                for (let i = 0; i < 256; i++) p[i] = i;
+
+                // Fisher-Yates shuffle with seeded random
+                for (let i = 255; i > 0; i--) {
+                    const j = Math.floor(this.random.next() * (i + 1));
+                    [p[i], p[j]] = [p[j], p[i]];
+                }
+
+                return [...p, ...p];
+            }
+
+            fade(t) {
+                return t * t * t * (t * (t * 6 - 15) + 10);
+            }
+
+            lerp(t, a, b) {
+                return a + t * (b - a);
+            }
+
+            grad(hash, x, y) {
+                const h = hash & 15;
+                const u = h < 8 ? x : y;
+                const v = h < 4 ? y : x;
+                return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+            }
+
+            noise(x, y) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+
+                const u = this.fade(x);
+                const v = this.fade(y);
+
+                const p = this.permutation;
+                const a = p[X] + Y;
+                const b = p[X + 1] + Y;
+
+                return this.lerp(v,
+                    this.lerp(u, this.grad(p[a], x, y), this.grad(p[b], x - 1, y)),
+                    this.lerp(u, this.grad(p[a + 1], x, y - 1), this.grad(p[b + 1], x - 1, y - 1))
+                );
+            }
+
+            generate(scale, octaves, roughness) {
+                const terrain = [];
+                let min = Infinity;
+                let max = -Infinity;
+
+                for (let y = 0; y < this.height; y++) {
+                    terrain[y] = [];
+                    for (let x = 0; x < this.width; x++) {
+                        let value = 0;
+                        let amplitude = 1;
+                        let frequency = 1;
+                        let maxValue = 0;
+
+                        for (let i = 0; i < octaves; i++) {
+                            const sampleX = (x / scale) * frequency;
+                            const sampleY = (y / scale) * frequency;
+                            value += this.noise(sampleX, sampleY) * amplitude;
+                            maxValue += amplitude;
+                            amplitude *= roughness;
+                            frequency *= 2;
+                        }
+
+                        value /= maxValue;
+                        terrain[y][x] = value;
+                        min = Math.min(min, value);
+                        max = Math.max(max, value);
+                    }
+                }
+
+                // Normalize to 0-100
+                for (let y = 0; y < this.height; y++) {
+                    for (let x = 0; x < this.width; x++) {
+                        terrain[y][x] = ((terrain[y][x] - min) / (max - min)) * 100;
+                    }
+                }
+
+                return terrain;
+            }
+        }
+
+        // Get elevation from terrain
+        function getElevation(x, y) {
+            if (!terrain) return 0;
+            const tx = Math.floor(x);
+            const ty = Math.floor(y);
+            if (tx < 0 || tx >= width || ty < 0 || ty >= height) return 0;
+            return terrain[ty][tx];
+        }
+
+        // Delaunay triangulation (Bowyer-Watson algorithm)
+        class Delaunay {
+            constructor(points) {
+                this.points = points;
+                this.triangles = [];
+                this.edges = [];
+                this.triangulate();
+                this.extractEdges();
+            }
+
+            triangulate() {
+                if (this.points.length < 3) return;
+
+                // Create super triangle
+                const maxX = Math.max(...this.points.map(p => p.x));
+                const maxY = Math.max(...this.points.map(p => p.y));
+                const minX = Math.min(...this.points.map(p => p.x));
+                const minY = Math.min(...this.points.map(p => p.y));
+
+                const dx = maxX - minX;
+                const dy = maxY - minY;
+                const deltaMax = Math.max(dx, dy);
+                const midx = (minX + maxX) / 2;
+                const midy = (minY + maxY) / 2;
+
+                const p1 = { x: midx - 20 * deltaMax, y: midy - deltaMax };
+                const p2 = { x: midx, y: midy + 20 * deltaMax };
+                const p3 = { x: midx + 20 * deltaMax, y: midy - deltaMax };
+
+                this.triangles.push([p1, p2, p3]);
+
+                // Add points one at a time
+                for (const point of this.points) {
+                    const badTriangles = [];
+
+                    for (const triangle of this.triangles) {
+                        if (this.inCircumcircle(point, triangle)) {
+                            badTriangles.push(triangle);
+                        }
+                    }
+
+                    const polygon = [];
+                    for (const triangle of badTriangles) {
+                        for (let i = 0; i < 3; i++) {
+                            const edge = [triangle[i], triangle[(i + 1) % 3]];
+                            let isShared = false;
+
+                            for (const other of badTriangles) {
+                                if (other === triangle) continue;
+                                if (this.hasEdge(other, edge)) {
+                                    isShared = true;
+                                    break;
+                                }
+                            }
+
+                            if (!isShared) {
+                                polygon.push(edge);
+                            }
+                        }
+                    }
+
+                    this.triangles = this.triangles.filter(t => !badTriangles.includes(t));
+
+                    for (const edge of polygon) {
+                        this.triangles.push([edge[0], edge[1], point]);
+                    }
+                }
+
+                // Remove triangles that share vertices with super triangle
+                this.triangles = this.triangles.filter(triangle => {
+                    return !triangle.some(p => p === p1 || p === p2 || p === p3);
+                });
+            }
+
+            inCircumcircle(point, triangle) {
+                const [a, b, c] = triangle;
+                const ax = a.x - point.x;
+                const ay = a.y - point.y;
+                const bx = b.x - point.x;
+                const by = b.y - point.y;
+                const cx = c.x - point.x;
+                const cy = c.y - point.y;
+
+                const det = (ax * ax + ay * ay) * (bx * cy - cx * by) -
+                           (bx * bx + by * by) * (ax * cy - cx * ay) +
+                           (cx * cx + cy * cy) * (ax * by - bx * ay);
+
+                return det > 0;
+            }
+
+            hasEdge(triangle, edge) {
+                for (let i = 0; i < 3; i++) {
+                    const e = [triangle[i], triangle[(i + 1) % 3]];
+                    if ((e[0] === edge[0] && e[1] === edge[1]) ||
+                        (e[0] === edge[1] && e[1] === edge[0])) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            extractEdges() {
+                const edgeSet = new Set();
+
+                for (const triangle of this.triangles) {
+                    for (let i = 0; i < 3; i++) {
+                        const p1 = triangle[i];
+                        const p2 = triangle[(i + 1) % 3];
+
+                        const key = p1.x < p2.x || (p1.x === p2.x && p1.y < p2.y) ?
+                            `${p1.x},${p1.y}-${p2.x},${p2.y}` :
+                            `${p2.x},${p2.y}-${p1.x},${p1.y}`;
+
+                        if (!edgeSet.has(key)) {
+                            edgeSet.add(key);
+                            this.edges.push({ p1, p2 });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Marching squares for isoline generation
+        function generateIsolines(points, interval) {
+            const lines = [];
+            const gridSize = 20;
+            const cols = Math.ceil(width / gridSize);
+            const rows = Math.ceil(height / gridSize);
+
+            // Create elevation grid
+            const grid = [];
+            for (let y = 0; y < rows; y++) {
+                grid[y] = [];
+                for (let x = 0; x < cols; x++) {
+                    grid[y][x] = getElevation(x * gridSize, y * gridSize);
+                }
+            }
+
+            // Generate isolines for each level
+            const levels = [];
+            for (let level = interval; level < 100; level += interval) {
+                levels.push(level);
+            }
+
+            for (const level of levels) {
+                const segments = [];
+
+                for (let y = 0; y < rows - 1; y++) {
+                    for (let x = 0; x < cols - 1; x++) {
+                        const x0 = x * gridSize;
+                        const y0 = y * gridSize;
+
+                        const v0 = grid[y][x];
+                        const v1 = grid[y][x + 1];
+                        const v2 = grid[y + 1][x + 1];
+                        const v3 = grid[y + 1][x];
+
+                        let caseIndex = 0;
+                        if (v0 > level) caseIndex |= 1;
+                        if (v1 > level) caseIndex |= 2;
+                        if (v2 > level) caseIndex |= 4;
+                        if (v3 > level) caseIndex |= 8;
+
+                        if (caseIndex === 0 || caseIndex === 15) continue;
+
+                        const lerp = (a, b, t) => a + (b - a) * t;
+
+                        const p = [];
+
+                        // Edge 0 (top)
+                        if ([1, 3, 4, 5, 6, 7, 12, 13, 14].includes(caseIndex)) {
+                            const t = (level - v0) / (v1 - v0);
+                            p.push({ x: lerp(x0, x0 + gridSize, t), y: y0, level });
+                        }
+
+                        // Edge 1 (right)
+                        if ([2, 3, 6, 7, 8, 9, 10, 11, 14].includes(caseIndex)) {
+                            const t = (level - v1) / (v2 - v1);
+                            p.push({ x: x0 + gridSize, y: lerp(y0, y0 + gridSize, t), level });
+                        }
+
+                        // Edge 2 (bottom)
+                        if ([4, 5, 6, 7, 9, 10, 11, 12, 13].includes(caseIndex)) {
+                            const t = (level - v3) / (v2 - v3);
+                            p.push({ x: lerp(x0, x0 + gridSize, t), y: y0 + gridSize, level });
+                        }
+
+                        // Edge 3 (left)
+                        if ([1, 2, 8, 9, 10, 11, 12, 13, 14].includes(caseIndex)) {
+                            const t = (level - v0) / (v3 - v0);
+                            p.push({ x: x0, y: lerp(y0, y0 + gridSize, t), level });
+                        }
+
+                        // Add segments
+                        if (p.length >= 2) {
+                            segments.push({ p1: p[0], p2: p[1], level });
+                            if (p.length === 4) {
+                                segments.push({ p1: p[2], p2: p[3], level });
+                            }
+                        }
+                    }
+                }
+
+                lines.push(...segments);
+            }
+
+            return lines;
+        }
+
+        // Drawing functions
+        function drawPoints() {
+            ctx.fillStyle = '#fff';
+            for (const point of points) {
+                const elevation = point.elevation;
+                const color = getElevationColor(elevation);
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function drawEdges() {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 0.5;
+            for (const edge of edges) {
+                ctx.beginPath();
+                ctx.moveTo(edge.p1.x, edge.p1.y);
+                ctx.lineTo(edge.p2.x, edge.p2.y);
+                ctx.stroke();
+            }
+        }
+
+        function drawIsolines() {
+            for (const line of isolines) {
+                const color = getElevationColor(line.level);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(line.p1.x, line.p1.y);
+                ctx.lineTo(line.p2.x, line.p2.y);
+                ctx.stroke();
+            }
+        }
+
+        function getElevationColor(elevation) {
+            const colors = [
+                { val: 0, color: [0, 0, 128] },      // Deep blue
+                { val: 20, color: [30, 144, 255] },  // Blue
+                { val: 40, color: [34, 139, 34] },   // Green
+                { val: 60, color: [255, 255, 0] },   // Yellow
+                { val: 80, color: [139, 69, 19] },   // Brown
+                { val: 100, color: [255, 255, 255] } // White
+            ];
+
+            for (let i = 0; i < colors.length - 1; i++) {
+                if (elevation >= colors[i].val && elevation <= colors[i + 1].val) {
+                    const t = (elevation - colors[i].val) / (colors[i + 1].val - colors[i].val);
+                    const r = Math.floor(colors[i].color[0] + (colors[i + 1].color[0] - colors[i].color[0]) * t);
+                    const g = Math.floor(colors[i].color[1] + (colors[i + 1].color[1] - colors[i].color[1]) * t);
+                    const b = Math.floor(colors[i].color[2] + (colors[i + 1].color[2] - colors[i].color[2]) * t);
+                    return `rgb(${r}, ${g}, ${b})`;
+                }
+            }
+            return 'rgb(255, 255, 255)';
+        }
+
+        function render() {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, width, height);
+
+            if (showPoints) {
+                drawEdges();
+                drawPoints();
+            }
+
+            drawIsolines();
+        }
+
+        // Generate terrain
+        function generate() {
+            const distributionType = document.getElementById('distributionType').value;
+            const numPoints = parseInt(document.getElementById('numPoints').value);
+            const roughness = parseFloat(document.getElementById('roughness').value);
+            const scale = parseFloat(document.getElementById('terrainScale').value);
+            const octaves = parseInt(document.getElementById('octaves').value);
+            const interval = parseFloat(document.getElementById('isolineInterval').value);
+            const seed = parseInt(document.getElementById('seed').value);
+
+            // Generate points
+            if (distributionType === 'poisson') {
+                points = poissonDiscSampling(width, height, numPoints);
+            } else {
+                points = hexagonalGrid(width, height, numPoints);
+            }
+
+            // Generate terrain
+            const generator = new TerrainGenerator(width, height, seed);
+            terrain = generator.generate(scale, octaves, roughness);
+
+            // Assign elevations to points
+            for (const point of points) {
+                point.elevation = getElevation(point.x, point.y);
+            }
+
+            // Create Delaunay triangulation
+            const delaunay = new Delaunay(points);
+            edges = delaunay.edges;
+
+            // Calculate edge steepness
+            for (const edge of edges) {
+                const dx = edge.p2.x - edge.p1.x;
+                const dy = edge.p2.y - edge.p1.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const elevationDiff = Math.abs(edge.p2.elevation - edge.p1.elevation);
+                edge.steepness = distance > 0 ? elevationDiff / distance : 0;
+            }
+
+            // Generate isolines
+            isolines = generateIsolines(points, interval);
+
+            render();
+        }
+
+        // Mouse interaction
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            let found = false;
+
+            // Check for point hover
+            for (const point of points) {
+                const dx = point.x - mouseX;
+                const dy = point.y - mouseY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 5) {
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = e.clientX + 10 + 'px';
+                    tooltip.style.top = e.clientY + 10 + 'px';
+                    tooltip.innerHTML = `Elevation: ${point.elevation.toFixed(2)}`;
+                    found = true;
+                    break;
+                }
+            }
+
+            // Check for edge hover
+            if (!found && showPoints) {
+                for (const edge of edges) {
+                    const dist = distanceToSegment(mouseX, mouseY, edge.p1, edge.p2);
+                    if (dist < 5) {
+                        tooltip.style.display = 'block';
+                        tooltip.style.left = e.clientX + 10 + 'px';
+                        tooltip.style.top = e.clientY + 10 + 'px';
+                        tooltip.innerHTML = `Steepness: ${edge.steepness.toFixed(4)}`;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found) {
+                tooltip.style.display = 'none';
+            }
+        });
+
+        function distanceToSegment(px, py, p1, p2) {
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const l2 = dx * dx + dy * dy;
+
+            if (l2 === 0) {
+                const dpx = px - p1.x;
+                const dpy = py - p1.y;
+                return Math.sqrt(dpx * dpx + dpy * dpy);
+            }
+
+            let t = ((px - p1.x) * dx + (py - p1.y) * dy) / l2;
+            t = Math.max(0, Math.min(1, t));
+
+            const projX = p1.x + t * dx;
+            const projY = p1.y + t * dy;
+            const dpx = px - projX;
+            const dpy = py - projY;
+
+            return Math.sqrt(dpx * dpx + dpy * dpy);
+        }
+
+        canvas.addEventListener('mouseleave', () => {
+            tooltip.style.display = 'none';
+        });
+
+        // UI Controls
+        document.getElementById('numPoints').addEventListener('input', (e) => {
+            document.getElementById('pointsValue').textContent = e.target.value;
+        });
+
+        document.getElementById('roughness').addEventListener('input', (e) => {
+            document.getElementById('roughnessValue').textContent = e.target.value;
+        });
+
+        document.getElementById('terrainScale').addEventListener('input', (e) => {
+            document.getElementById('scaleValue').textContent = e.target.value;
+        });
+
+        document.getElementById('octaves').addEventListener('input', (e) => {
+            document.getElementById('octavesValue').textContent = e.target.value;
+        });
+
+        document.getElementById('isolineInterval').addEventListener('input', (e) => {
+            document.getElementById('intervalValue').textContent = e.target.value;
+        });
+
+        document.getElementById('generateBtn').addEventListener('click', generate);
+
+        document.getElementById('toggleView').addEventListener('click', () => {
+            showPoints = !showPoints;
+            render();
+        });
+
+        // Initial generation
+        generate();
+    </script>
+</body>
+</html>
