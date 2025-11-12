@@ -434,9 +434,11 @@
                 const p2 = { x: midx, y: midy + 20 * deltaMax };
                 const p3 = { x: midx + 20 * deltaMax, y: midy - deltaMax };
 
+                console.log('  Super triangle vertices:', { p1, p2, p3 });
                 this.triangles.push([p1, p2, p3]);
 
                 // Add points one at a time
+                let pointsProcessed = 0;
                 for (const point of this.points) {
                     const badTriangles = [];
 
@@ -444,6 +446,11 @@
                         if (this.inCircumcircle(point, triangle)) {
                             badTriangles.push(triangle);
                         }
+                    }
+
+                    pointsProcessed++;
+                    if (pointsProcessed <= 3 || pointsProcessed % 100 === 0) {
+                        console.log(`  Processing point ${pointsProcessed}/${this.points.length}: found ${badTriangles.length} bad triangles, currently have ${this.triangles.length} triangles`);
                     }
 
                     const polygon = [];
@@ -474,10 +481,16 @@
                 }
 
                 // Remove triangles that share vertices with super triangle
+                const trianglesBeforeFilter = this.triangles.length;
+                console.log('  Triangles before super triangle removal:', trianglesBeforeFilter);
+
                 this.triangles = this.triangles.filter(triangle => {
-                    return !triangle.some(p => p === p1 || p === p2 || p === p3);
+                    const hasSuperVertex = triangle.some(p => p === p1 || p === p2 || p === p3);
+                    return !hasSuperVertex;
                 });
 
+                console.log('  Triangles after super triangle removal:', this.triangles.length);
+                console.log('  Removed', trianglesBeforeFilter - this.triangles.length, 'triangles');
                 console.log('  Delaunay.triangulate() finished with', this.triangles.length, 'triangles');
             }
 
