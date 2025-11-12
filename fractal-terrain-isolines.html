@@ -140,7 +140,13 @@
         </div>
 
         <button id="generateBtn">Generate Terrain</button>
-        <button id="toggleView" style="background: #2196F3;">Toggle Points/Isolines</button>
+
+        <div class="control-group" style="margin-top: 20px;">
+            <h3 style="margin-bottom: 10px;">Display Options</h3>
+            <button id="togglePoints" style="background: #2196F3;">Toggle Points</button>
+            <button id="toggleEdges" style="background: #2196F3;">Toggle Edges</button>
+            <button id="toggleIsolines" style="background: #2196F3;">Toggle Isolines</button>
+        </div>
     </div>
 
     <div id="tooltip"></div>
@@ -158,6 +164,8 @@
         let isolines = [];
         let terrain = null;
         let showPoints = true;
+        let showEdges = true;
+        let showIsolines = true;
 
         function resizeCanvas() {
             width = window.innerWidth;
@@ -582,28 +590,38 @@
 
         // Drawing functions
         function drawPoints() {
+            console.log('  drawPoints() called - drawing', points.length, 'points');
             ctx.fillStyle = '#fff';
+            let drawn = 0;
             for (const point of points) {
                 const color = getElevationColor(point.normalizedElevation);
                 ctx.fillStyle = color;
                 ctx.beginPath();
                 ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
                 ctx.fill();
+                drawn++;
             }
+            console.log('  drawPoints() finished - drew', drawn, 'points');
         }
 
         function drawEdges() {
+            console.log('  drawEdges() called - drawing', edges.length, 'edges');
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
             ctx.lineWidth = 0.5;
+            let drawn = 0;
             for (const edge of edges) {
                 ctx.beginPath();
                 ctx.moveTo(edge.p1.x, edge.p1.y);
                 ctx.lineTo(edge.p2.x, edge.p2.y);
                 ctx.stroke();
+                drawn++;
             }
+            console.log('  drawEdges() finished - drew', drawn, 'edges');
         }
 
         function drawIsolines() {
+            console.log('  drawIsolines() called - drawing', isolines.length, 'isoline segments');
+            let drawn = 0;
             for (const line of isolines) {
                 const color = getElevationColor(line.level);
                 ctx.strokeStyle = color;
@@ -612,7 +630,9 @@
                 ctx.moveTo(line.p1.x, line.p1.y);
                 ctx.lineTo(line.p2.x, line.p2.y);
                 ctx.stroke();
+                drawn++;
             }
+            console.log('  drawIsolines() finished - drew', drawn, 'isoline segments');
         }
 
         function getElevationColor(normalizedElevation) {
@@ -639,19 +659,40 @@
         }
 
         function render() {
+            console.log('=== RENDER START ===');
+            console.log('showPoints:', showPoints, 'showEdges:', showEdges, 'showIsolines:', showIsolines);
+            console.log('Points:', points.length, 'Edges:', edges.length, 'Isolines:', isolines.length);
+
             ctx.fillStyle = '#1a1a1a';
             ctx.fillRect(0, 0, width, height);
 
-            if (showPoints) {
+            if (showEdges && edges.length > 0) {
+                console.log('Drawing', edges.length, 'edges');
                 drawEdges();
-                drawPoints();
+            } else {
+                console.log('Skipping edges - showEdges:', showEdges, 'edges.length:', edges.length);
             }
 
-            drawIsolines();
+            if (showPoints && points.length > 0) {
+                console.log('Drawing', points.length, 'points');
+                drawPoints();
+            } else {
+                console.log('Skipping points - showPoints:', showPoints, 'points.length:', points.length);
+            }
+
+            if (showIsolines && isolines.length > 0) {
+                console.log('Drawing', isolines.length, 'isolines');
+                drawIsolines();
+            } else {
+                console.log('Skipping isolines - showIsolines:', showIsolines, 'isolines.length:', isolines.length);
+            }
+
+            console.log('=== RENDER END ===');
         }
 
         // Generate terrain
         function generate() {
+            console.log('=== GENERATE START ===');
             const distributionType = document.getElementById('distributionType').value;
             const numPoints = parseInt(document.getElementById('numPoints').value);
             const roughness = parseFloat(document.getElementById('roughness').value);
@@ -659,16 +700,20 @@
             const octaves = parseInt(document.getElementById('octaves').value);
             const seed = parseInt(document.getElementById('seed').value);
 
+            console.log('Parameters:', { distributionType, numPoints, roughness, scale, octaves, seed });
+
             // Generate points
             if (distributionType === 'poisson') {
                 points = poissonDiscSampling(width, height, numPoints);
             } else {
                 points = hexagonalGrid(width, height, numPoints);
             }
+            console.log('Generated', points.length, 'points');
 
             // Generate terrain
             const generator = new TerrainGenerator(width, height, seed);
             terrain = generator.generate(scale, octaves, roughness);
+            console.log('Terrain generated');
 
             // Assign elevations to points and normalize to 1-10
             let minElev = Infinity;
@@ -680,16 +725,24 @@
                 maxElev = Math.max(maxElev, point.elevation);
             }
 
+            console.log('Elevation range:', minElev, '-', maxElev);
+
             // Normalize and round elevations to integers 1-10
             for (const point of points) {
                 const normalized = ((point.elevation - minElev) / (maxElev - minElev)) * 9 + 1;
                 point.normalizedElevation = Math.round(normalized);
             }
 
+            // Sample normalized elevations
+            const sampleElevations = points.slice(0, 5).map(p => p.normalizedElevation);
+            console.log('Sample normalized elevations:', sampleElevations);
+
             // Create Delaunay triangulation
+            console.log('Creating Delaunay triangulation...');
             const delaunay = new Delaunay(points);
             edges = delaunay.edges;
             triangles = delaunay.triangles;
+            console.log('Created', triangles.length, 'triangles and', edges.length, 'edges');
 
             // Calculate edge steepness
             for (const edge of edges) {
@@ -701,7 +754,21 @@
             }
 
             // Generate isolines using triangle-based approach
+            console.log('Generating isolines...');
             isolines = generateIsolines(triangles, points);
+            console.log('Generated', isolines.length, 'isoline segments');
+
+            // Sample some isolines
+            if (isolines.length > 0) {
+                const sampleIsolines = isolines.slice(0, 3).map(iso => ({
+                    level: iso.level,
+                    p1: { x: iso.p1.x.toFixed(1), y: iso.p1.y.toFixed(1) },
+                    p2: { x: iso.p2.x.toFixed(1), y: iso.p2.y.toFixed(1) }
+                }));
+                console.log('Sample isolines:', sampleIsolines);
+            }
+
+            console.log('=== GENERATE END ===');
 
             render();
         }
@@ -795,8 +862,21 @@
 
         document.getElementById('generateBtn').addEventListener('click', generate);
 
-        document.getElementById('toggleView').addEventListener('click', () => {
+        document.getElementById('togglePoints').addEventListener('click', () => {
             showPoints = !showPoints;
+            console.log('Toggled showPoints to:', showPoints);
+            render();
+        });
+
+        document.getElementById('toggleEdges').addEventListener('click', () => {
+            showEdges = !showEdges;
+            console.log('Toggled showEdges to:', showEdges);
+            render();
+        });
+
+        document.getElementById('toggleIsolines').addEventListener('click', () => {
+            showIsolines = !showIsolines;
+            console.log('Toggled showIsolines to:', showIsolines);
             render();
         });
 
