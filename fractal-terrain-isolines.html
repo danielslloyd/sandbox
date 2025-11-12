@@ -923,28 +923,76 @@
             return 'rgb(255, 255, 255)';
         }
 
+        // Check if two line segments intersect and return intersection point
+        function lineSegmentIntersection(p1, p2, p3, p4) {
+            const x1 = p1.x, y1 = p1.y;
+            const x2 = p2.x, y2 = p2.y;
+            const x3 = p3.x, y3 = p3.y;
+            const x4 = p4.x, y4 = p4.y;
+
+            const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+            if (Math.abs(denom) < 1e-10) return null; // Parallel or coincident
+
+            const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+            const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+
+            // Check if intersection is within both segments (excluding endpoints)
+            if (t > 0 && t < 1 && u > 0 && u < 1) {
+                return {
+                    x: x1 + t * (x2 - x1),
+                    y: y1 + t * (y2 - y1),
+                    tAB: t,  // Parameter along A-B line
+                    tEdge: u // Parameter along edge
+                };
+            }
+
+            return null;
+        }
+
+        // Check if two nodes share an edge
+        function nodesShareEdge(nodeA, nodeB) {
+            for (const edge of edges) {
+                if ((edge.p1 === nodeA && edge.p2 === nodeB) ||
+                    (edge.p1 === nodeB && edge.p2 === nodeA)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Check if a line from pointA to pointB intersects the ground
         function lineIntersectsGround(pointA, pointB) {
-            // Sample points along the line
-            const steps = 20;
-            const dx = pointB.x - pointA.x;
-            const dy = pointB.y - pointA.y;
+            // If A and B share an edge, they can always see each other
+            if (nodesShareEdge(pointA, pointB)) {
+                return false;
+            }
 
-            for (let i = 1; i < steps; i++) {
-                const t = i / steps;
-                const x = pointA.x + t * dx;
-                const y = pointA.y + t * dy;
+            // Add 0.1 to elevations (simulating people standing on nodes)
+            const elevA = pointA.normalizedElevation + 0.1;
+            const elevB = pointB.normalizedElevation + 0.1;
 
-                // Interpolate elevation along the line
-                const interpolatedElev = pointA.normalizedElevation + t * (pointB.normalizedElevation - pointA.normalizedElevation);
+            // Check intersections with all edges in the triangulation
+            for (const edge of edges) {
+                // Skip edges that share pointA or pointB as an endpoint
+                if (edge.p1 === pointA || edge.p1 === pointB ||
+                    edge.p2 === pointA || edge.p2 === pointB) {
+                    continue;
+                }
 
-                // Get ground elevation at this point
-                const groundElev = getElevation(x, y);
-                const normalizedGroundElev = ((groundElev - 0) / 100) * 9 + 1; // Normalize to 1-10
+                const intersection = lineSegmentIntersection(pointA, pointB, edge.p1, edge.p2);
 
-                // If line goes below ground, it intersects
-                if (interpolatedElev < normalizedGroundElev) {
-                    return true;
+                if (intersection) {
+                    // Interpolate elevation along the A-B line at intersection point
+                    const lineElev = elevA + intersection.tAB * (elevB - elevA);
+
+                    // Interpolate ground elevation along the edge at intersection point
+                    const edgeElev = edge.p1.normalizedElevation +
+                                    intersection.tEdge * (edge.p2.normalizedElevation - edge.p1.normalizedElevation);
+
+                    // If line goes below ground, it's blocked
+                    if (lineElev < edgeElev) {
+                        return true;
+                    }
                 }
             }
 
