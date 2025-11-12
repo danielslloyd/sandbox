@@ -507,6 +507,15 @@
                            (bx * bx + by * by) * (ax * cy - cx * ay) +
                            (cx * cx + cy * cy) * (ax * by - bx * ay);
 
+                // Log first few circumcircle tests
+                if (!this._circumcircleTestCount) this._circumcircleTestCount = 0;
+                this._circumcircleTestCount++;
+                if (this._circumcircleTestCount <= 5) {
+                    console.log(`    inCircumcircle test #${this._circumcircleTestCount}: det=${det.toFixed(2)}, result=${det > 0}`);
+                    console.log(`      point=(${point.x.toFixed(1)}, ${point.y.toFixed(1)})`);
+                    console.log(`      triangle: a=(${a.x.toFixed(1)}, ${a.y.toFixed(1)}), b=(${b.x.toFixed(1)}, ${b.y.toFixed(1)}), c=(${c.x.toFixed(1)}, ${c.y.toFixed(1)})`);
+                }
+
                 return det > 0;
             }
 
