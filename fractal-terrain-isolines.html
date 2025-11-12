@@ -555,65 +555,168 @@
             }
         }
 
-        // Triangle-based isoline generation
+        // Triangle-based isoline generation with middle-third constraint and curve support
         function generateIsolines(triangles, points) {
             console.log('  generateIsolines() starting with', triangles.length, 'triangles');
-            const lines = [];
 
             // Isoline levels are at X.5 (1.5, 2.5, 3.5, ..., 9.5)
             const isolineLevels = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5];
 
+            // First pass: collect all edge crossings grouped by edge
+            const edgeCrossings = new Map(); // key: edge string, value: array of {level, t, triangle}
+
+            // Helper to create edge key (normalized so p1->p2 and p2->p1 have same key)
+            function getEdgeKey(p1, p2) {
+                const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+                if (x1 < x2 || (x1 === x2 && y1 < y2)) {
+                    return `${x1},${y1}-${x2},${y2}`;
+                } else {
+                    return `${x2},${y2}-${x1},${y1}`;
+                }
+            }
+
             // Process each triangle
             for (const triangle of triangles) {
                 const [p0, p1, p2] = triangle;
-
-                // Get normalized elevations (1-10)
                 const e0 = p0.normalizedElevation;
                 const e1 = p1.normalizedElevation;
                 const e2 = p2.normalizedElevation;
 
-                // For each isoline level
+                const edges = [
+                    { p1: p0, p2: p1, e1: e0, e2: e1 },
+                    { p1: p1, p2: p2, e1: e1, e2: e2 },
+                    { p1: p2, p2: p0, e1: e2, e2: e0 }
+                ];
+
+                for (const edge of edges) {
+                    const edgeKey = getEdgeKey(edge.p1, edge.p2);
+
+                    for (const level of isolineLevels) {
+                        if ((edge.e1 < level && edge.e2 > level) || (edge.e1 > level && edge.e2 < level)) {
+                            const t = (level - edge.e1) / (edge.e2 - edge.e1);
+
+                            if (!edgeCrossings.has(edgeKey)) {
+                                edgeCrossings.set(edgeKey, {
+                                    p1: edge.p1,
+                                    p2: edge.p2,
+                                    crossings: []
+                                });
+                            }
+
+                            edgeCrossings.get(edgeKey).crossings.push({ level, t, triangle });
+                        }
+                    }
+                }
+            }
+
+            // Second pass: redistribute crossings within middle third of each edge
+            const redistributedEdges = new Map();
+
+            for (const [edgeKey, edgeData] of edgeCrossings.entries()) {
+                const { p1, p2, crossings } = edgeData;
+
+                // Sort crossings by level to maintain order
+                crossings.sort((a, b) => a.level - b.level);
+
+                const numCrossings = crossings.length;
+                if (numCrossings === 0) continue;
+
+                // Redistribute within middle third (t from 1/3 to 2/3)
+                const redistributed = crossings.map((crossing, index) => {
+                    // Evenly distribute within the middle third
+                    const newT = (1/3) + (index / Math.max(1, numCrossings - 1)) * (1/3);
+
+                    return {
+                        level: crossing.level,
+                        t: newT,
+                        originalT: crossing.t
+                    };
+                });
+
+                redistributedEdges.set(edgeKey, {
+                    p1, p2, crossings: redistributed
+                });
+            }
+
+            // Third pass: create isoline segments by matching crossings across triangles
+            const lines = [];
+            const processedSegments = new Set();
+
+            for (const triangle of triangles) {
+                const [p0, p1, p2] = triangle;
+
+                const edges = [
+                    { p1: p0, p2: p1 },
+                    { p1: p1, p2: p2 },
+                    { p1: p2, p2: p0 }
+                ];
+
                 for (const level of isolineLevels) {
-                    // Find which edges this isoline crosses
                     const crossings = [];
 
-                    // Check edge 0 (p0 -> p1)
-                    if ((e0 < level && e1 > level) || (e0 > level && e1 < level)) {
-                        const t = (level - e0) / (e1 - e0);
-                        crossings.push({
-                            x: p0.x + t * (p1.x - p0.x),
-                            y: p0.y + t * (p1.y - p0.y),
-                            edge: 0
-                        });
-                    }
+                    for (const edge of edges) {
+                        const edgeKey = getEdgeKey(edge.p1, edge.p2);
+                        const edgeData = redistributedEdges.get(edgeKey);
 
-                    // Check edge 1 (p1 -> p2)
-                    if ((e1 < level && e2 > level) || (e1 > level && e2 < level)) {
-                        const t = (level - e1) / (e2 - e1);
-                        crossings.push({
-                            x: p1.x + t * (p2.x - p1.x),
-                            y: p1.y + t * (p2.y - p1.y),
-                            edge: 1
-                        });
-                    }
+                        if (edgeData) {
+                            const crossing = edgeData.crossings.find(c => c.level === level);
+                            if (crossing) {
+                                // Calculate actual position using redistributed t
+                                const x = edgeData.p1.x + crossing.t * (edgeData.p2.x - edgeData.p1.x);
+                                const y = edgeData.p1.y + crossing.t * (edgeData.p2.y - edgeData.p1.y);
 
-                    // Check edge 2 (p2 -> p0)
-                    if ((e2 < level && e0 > level) || (e2 > level && e0 < level)) {
-                        const t = (level - e2) / (e0 - e2);
-                        crossings.push({
-                            x: p2.x + t * (p0.x - p2.x),
-                            y: p2.y + t * (p0.y - p2.y),
-                            edge: 2
-                        });
+                                crossings.push({
+                                    x, y,
+                                    edgeP1: edgeData.p1,
+                                    edgeP2: edgeData.p2,
+                                    t: crossing.t,
+                                    edgeKey
+                                });
+                            }
+                        }
                     }
 
                     // If we have exactly 2 crossings, create an isoline segment
                     if (crossings.length === 2) {
-                        lines.push({
-                            p1: { x: crossings[0].x, y: crossings[0].y },
-                            p2: { x: crossings[1].x, y: crossings[1].y },
-                            level: level
-                        });
+                        const segmentKey = `${level}:${Math.min(crossings[0].x, crossings[1].x)},${Math.min(crossings[0].y, crossings[1].y)}`;
+
+                        if (!processedSegments.has(segmentKey)) {
+                            processedSegments.add(segmentKey);
+
+                            // Calculate curve control points for each endpoint
+                            const segments = [];
+                            for (let i = 0; i < 2; i++) {
+                                const crossing = crossings[i];
+
+                                // Calculate perpendicular direction to edge
+                                const edgeDx = crossing.edgeP2.x - crossing.edgeP1.x;
+                                const edgeDy = crossing.edgeP2.y - crossing.edgeP1.y;
+                                const edgeLength = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+
+                                // Perpendicular vector (rotated 90 degrees)
+                                const perpX = -edgeDy / edgeLength;
+                                const perpY = edgeDx / edgeLength;
+
+                                segments.push({
+                                    x: crossing.x,
+                                    y: crossing.y,
+                                    perpX,
+                                    perpY,
+                                    edgeKey: crossing.edgeKey,
+                                    t: crossing.t
+                                });
+                            }
+
+                            lines.push({
+                                p1: { x: segments[0].x, y: segments[0].y },
+                                p2: { x: segments[1].x, y: segments[1].y },
+                                perp1: { x: segments[0].perpX, y: segments[0].perpY },
+                                perp2: { x: segments[1].perpX, y: segments[1].perpY },
+                                level: level,
+                                t1: segments[0].t,
+                                t2: segments[1].t
+                            });
+                        }
                     }
                 }
             }
@@ -664,17 +767,57 @@
         function drawIsolines() {
             console.log('  drawIsolines() called - drawing', isolines.length, 'isoline segments');
             let drawn = 0;
+
             for (const line of isolines) {
                 const color = getElevationColor(line.level);
                 ctx.strokeStyle = color;
                 ctx.lineWidth = 2;
+
+                // Calculate vector between endpoints
+                const dx = line.p2.x - line.p1.x;
+                const dy = line.p2.y - line.p1.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                // Calculate perpendicular to the isoline segment (not the edges)
+                // Rotate 90 degrees counter-clockwise
+                const perpX = -dy / distance;
+                const perpY = dx / distance;
+
+                // Determine bulge direction by checking which way points "outward"
+                // Use the average of edge perpendiculars to determine the preferred direction
+                const avgEdgePerpX = (line.perp1.x + line.perp2.x) / 2;
+                const avgEdgePerpY = (line.perp1.y + line.perp2.y) / 2;
+
+                // Dot product to determine if we should flip the perpendicular
+                const dot = perpX * avgEdgePerpX + perpY * avgEdgePerpY;
+                const sign = dot >= 0 ? 1 : -1;
+
+                // Calculate bulge amount based on position within middle third
+                // Isolines at t=0.5 (center) get maximum bulge
+                // Isolines at t=1/3 or t=2/3 (edges of middle third) get minimum bulge
+                const tAvg = (line.t1 + line.t2) / 2;
+                const tNormalized = (tAvg - 1/3) / (1/3); // Maps [1/3, 2/3] to [0, 1]
+                // Parabolic curve: maximum at center (0.5), minimum at edges
+                const tFactor = 1 - 4 * Math.pow(tNormalized - 0.5, 2); // Peak at 0.5
+
+                const baseBulge = distance * 0.2; // 20% of segment length
+                const bulge = baseBulge * Math.max(0.3, tFactor); // Minimum 30% bulge
+
+                // Calculate control point at midpoint, offset perpendicular
+                const midX = (line.p1.x + line.p2.x) / 2;
+                const midY = (line.p1.y + line.p2.y) / 2;
+                const controlX = midX + sign * perpX * bulge;
+                const controlY = midY + sign * perpY * bulge;
+
+                // Draw quadratic curve
                 ctx.beginPath();
                 ctx.moveTo(line.p1.x, line.p1.y);
-                ctx.lineTo(line.p2.x, line.p2.y);
+                ctx.quadraticCurveTo(controlX, controlY, line.p2.x, line.p2.y);
                 ctx.stroke();
                 drawn++;
             }
-            console.log('  drawIsolines() finished - drew', drawn, 'isoline segments');
+
+            console.log('  drawIsolines() finished - drew', drawn, 'curved isoline segments');
         }
 
         function getElevationColor(normalizedElevation) {
