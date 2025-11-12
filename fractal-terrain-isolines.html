@@ -661,15 +661,20 @@
                         if (edgeData) {
                             const crossing = edgeData.crossings.find(c => c.level === level);
                             if (crossing) {
+                                // Check if the edge direction matches the stored direction
+                                // If not, we need to flip the t value
+                                const edgeMatches = (edge.p1 === edgeData.p1 && edge.p2 === edgeData.p2);
+                                const adjustedT = edgeMatches ? crossing.t : (1 - crossing.t);
+
                                 // Calculate actual position using redistributed t
-                                const x = edgeData.p1.x + crossing.t * (edgeData.p2.x - edgeData.p1.x);
-                                const y = edgeData.p1.y + crossing.t * (edgeData.p2.y - edgeData.p1.y);
+                                const x = edgeData.p1.x + adjustedT * (edgeData.p2.x - edgeData.p1.x);
+                                const y = edgeData.p1.y + adjustedT * (edgeData.p2.y - edgeData.p1.y);
 
                                 crossings.push({
                                     x, y,
                                     edgeP1: edgeData.p1,
                                     edgeP2: edgeData.p2,
-                                    t: crossing.t,
+                                    t: adjustedT,
                                     edgeKey
                                 });
                             }
