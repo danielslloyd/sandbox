@@ -166,6 +166,8 @@
         let showPoints = true;
         let showEdges = true;
         let showIsolines = true;
+        let selectedNode = null;
+        let medianEdgeLength = 0;
 
         function resizeCanvas() {
             width = window.innerWidth;
@@ -546,12 +548,34 @@
 
                         if (!edgeSet.has(key)) {
                             edgeSet.add(key);
-                            this.edges.push({ p1, p2 });
+                            const dx = p2.x - p1.x;
+                            const dy = p2.y - p1.y;
+                            const length = Math.sqrt(dx * dx + dy * dy);
+                            this.edges.push({ p1, p2, length });
                         }
                     }
                 }
 
                 console.log('  Delaunay.extractEdges() finished with', this.edges.length, 'edges');
+            }
+
+            trimLongEdges() {
+                console.log('  Delaunay.trimLongEdges() starting with', this.edges.length, 'edges');
+
+                // Calculate median edge length
+                const lengths = this.edges.map(e => e.length).sort((a, b) => a - b);
+                const medianLength = lengths[Math.floor(lengths.length / 2)];
+                console.log('  Median edge length:', medianLength.toFixed(2));
+
+                // Keep only edges <= 1.5x median
+                const threshold = medianLength * 1.5;
+                const originalCount = this.edges.length;
+                this.edges = this.edges.filter(e => e.length <= threshold);
+
+                console.log('  Trimmed', originalCount - this.edges.length, 'edges');
+                console.log('  Remaining edges:', this.edges.length);
+
+                return medianLength;
             }
         }
 
@@ -628,7 +652,20 @@
                 }
             }
 
-            // Second pass: redistribute crossings within middle third of each edge
+            // Second pass: Find max crossings and calculate fixed spacing
+            let maxCrossings = 0;
+            for (const [edgeKey, edgeData] of edgeCrossings.entries()) {
+                maxCrossings = Math.max(maxCrossings, edgeData.crossings.length);
+            }
+
+            // Calculate fixed spacing based on max crossings
+            // The edge with most crossings should fit all within middle third
+            const middleThirdSize = 1/3;
+            const fixedSpacing = maxCrossings > 1 ? middleThirdSize / (maxCrossings - 1) : 0;
+            console.log('  Max crossings on any edge:', maxCrossings);
+            console.log('  Fixed spacing between crossings:', fixedSpacing.toFixed(4));
+
+            // Redistribute crossings centered on middle of each edge with fixed spacing
             const redistributedEdges = new Map();
 
             for (const [edgeKey, edgeData] of edgeCrossings.entries()) {
@@ -640,11 +677,18 @@
                 const numCrossings = crossings.length;
                 if (numCrossings === 0) continue;
 
-                // Redistribute within middle third (t from 1/3 to 2/3)
-                // Since edge is ordered low->high elevation, crossings are naturally ordered
+                // Center crossings on middle of edge (t=0.5) with fixed spacing
                 const redistributed = crossings.map((crossing, index) => {
-                    // Evenly distribute within the middle third
-                    const newT = (1/3) + (index / Math.max(1, numCrossings - 1)) * (1/3);
+                    let newT;
+                    if (numCrossings === 1) {
+                        // Single crossing: place at center
+                        newT = 0.5;
+                    } else {
+                        // Multiple crossings: center them around 0.5 with fixed spacing
+                        const totalSpan = (numCrossings - 1) * fixedSpacing;
+                        const startT = 0.5 - totalSpan / 2;
+                        newT = startT + index * fixedSpacing;
+                    }
 
                     return {
                         level: crossing.level,
@@ -661,6 +705,8 @@
             // Third pass: create isoline segments by matching crossings across triangles
             const lines = [];
             const processedSegments = new Set();
+            let missingLineCount = 0;
+            let trianglesWithMissingLines = 0;
 
             for (const triangle of triangles) {
                 const [p0, p1, p2] = triangle;
@@ -694,6 +740,15 @@
                                     edgeKey: canonical.key
                                 });
                             }
+                        }
+                    }
+
+                    // Check for missing lines (triangles with odd number of crossings)
+                    if (crossings.length !== 0 && crossings.length !== 2) {
+                        missingLineCount++;
+                        if (crossings.length === 1 || crossings.length === 3) {
+                            trianglesWithMissingLines++;
+                            console.warn(`  Triangle has ${crossings.length} crossing(s) at level ${level} - possible missing line`);
                         }
                     }
 
@@ -740,6 +795,10 @@
                         }
                     }
                 }
+            }
+
+            if (trianglesWithMissingLines > 0) {
+                console.warn(`  Found ${trianglesWithMissingLines} triangles with potential missing lines (total ${missingLineCount} anomalies)`);
             }
 
             console.log('  generateIsolines() finished with', lines.length, 'isoline segments');
@@ -864,6 +923,92 @@
             return 'rgb(255, 255, 255)';
         }
 
+        // Check if a line from pointA to pointB intersects the ground
+        function lineIntersectsGround(pointA, pointB) {
+            // Sample points along the line
+            const steps = 20;
+            const dx = pointB.x - pointA.x;
+            const dy = pointB.y - pointA.y;
+
+            for (let i = 1; i < steps; i++) {
+                const t = i / steps;
+                const x = pointA.x + t * dx;
+                const y = pointA.y + t * dy;
+
+                // Interpolate elevation along the line
+                const interpolatedElev = pointA.normalizedElevation + t * (pointB.normalizedElevation - pointA.normalizedElevation);
+
+                // Get ground elevation at this point
+                const groundElev = getElevation(x, y);
+                const normalizedGroundElev = ((groundElev - 0) / 100) * 9 + 1; // Normalize to 1-10
+
+                // If line goes below ground, it intersects
+                if (interpolatedElev < normalizedGroundElev) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Calculate visibility from selected node to all other nodes
+        function calculateVisibility(selectedNode) {
+            const visibilityDistance = medianEdgeLength * 4;
+            const visible = [];
+            const inRangeNotVisible = [];
+
+            for (const node of points) {
+                if (node === selectedNode) continue;
+
+                const dx = node.x - selectedNode.x;
+                const dy = node.y - selectedNode.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance <= visibilityDistance) {
+                    // Within range, check line of sight
+                    if (!lineIntersectsGround(selectedNode, node)) {
+                        visible.push(node);
+                    } else {
+                        inRangeNotVisible.push(node);
+                    }
+                }
+            }
+
+            return { visible, inRangeNotVisible };
+        }
+
+        // Draw visibility indicators
+        function drawVisibility() {
+            if (!selectedNode) return;
+
+            const { visible, inRangeNotVisible } = calculateVisibility(selectedNode);
+
+            // Draw red circles for in-range but not visible
+            ctx.strokeStyle = 'rgb(255, 0, 0)';
+            ctx.lineWidth = 2;
+            for (const node of inRangeNotVisible) {
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 8, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Draw green circles for visible
+            ctx.strokeStyle = 'rgb(0, 255, 0)';
+            ctx.lineWidth = 2;
+            for (const node of visible) {
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 8, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Draw selection circle around selected node
+            ctx.strokeStyle = 'rgb(255, 255, 0)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(selectedNode.x, selectedNode.y, 12, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
         function render() {
             console.log('=== RENDER START ===');
             console.log('showPoints:', showPoints, 'showEdges:', showEdges, 'showIsolines:', showIsolines);
@@ -893,12 +1038,19 @@
                 console.log('Skipping isolines - showIsolines:', showIsolines, 'isolines.length:', isolines.length);
             }
 
+            // Draw visibility indicators if a node is selected
+            drawVisibility();
+
             console.log('=== RENDER END ===');
         }
 
         // Generate terrain
         function generate() {
             console.log('=== GENERATE START ===');
+
+            // Clear selection when generating new terrain
+            selectedNode = null;
+
             const distributionType = document.getElementById('distributionType').value;
             const numPoints = parseInt(document.getElementById('numPoints').value);
             const roughness = parseFloat(document.getElementById('roughness').value);
@@ -948,6 +1100,10 @@
             try {
                 const delaunay = new Delaunay(points);
                 console.log('Delaunay object created');
+
+                // Trim long edges and get median edge length
+                medianEdgeLength = delaunay.trimLongEdges();
+
                 edges = delaunay.edges;
                 triangles = delaunay.triangles;
                 console.log('Created', triangles.length, 'triangles and', edges.length, 'edges');
@@ -1072,6 +1228,35 @@
 
         canvas.addEventListener('mouseleave', () => {
             tooltip.style.display = 'none';
+        });
+
+        // Click handler for node selection
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Find clicked node
+            let clickedNode = null;
+            for (const point of points) {
+                const dx = point.x - mouseX;
+                const dy = point.y - mouseY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 10) {
+                    clickedNode = point;
+                    break;
+                }
+            }
+
+            // Toggle selection
+            if (clickedNode === selectedNode) {
+                selectedNode = null; // Deselect if clicking the same node
+            } else {
+                selectedNode = clickedNode;
+            }
+
+            render();
         });
 
         // UI Controls
