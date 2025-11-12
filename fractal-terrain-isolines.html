@@ -412,7 +412,11 @@
             }
 
             triangulate() {
-                if (this.points.length < 3) return;
+                console.log('  Delaunay.triangulate() starting with', this.points.length, 'points');
+                if (this.points.length < 3) {
+                    console.error('  ERROR: Not enough points for triangulation:', this.points.length);
+                    return;
+                }
 
                 // Create super triangle
                 const maxX = Math.max(...this.points.map(p => p.x));
@@ -473,6 +477,8 @@
                 this.triangles = this.triangles.filter(triangle => {
                     return !triangle.some(p => p === p1 || p === p2 || p === p3);
                 });
+
+                console.log('  Delaunay.triangulate() finished with', this.triangles.length, 'triangles');
             }
 
             inCircumcircle(point, triangle) {
@@ -503,6 +509,7 @@
             }
 
             extractEdges() {
+                console.log('  Delaunay.extractEdges() starting with', this.triangles.length, 'triangles');
                 const edgeSet = new Set();
 
                 for (const triangle of this.triangles) {
@@ -520,11 +527,14 @@
                         }
                     }
                 }
+
+                console.log('  Delaunay.extractEdges() finished with', this.edges.length, 'edges');
             }
         }
 
         // Triangle-based isoline generation
         function generateIsolines(triangles, points) {
+            console.log('  generateIsolines() starting with', triangles.length, 'triangles');
             const lines = [];
 
             // Isoline levels are at X.5 (1.5, 2.5, 3.5, ..., 9.5)
@@ -584,6 +594,15 @@
                     }
                 }
             }
+
+            console.log('  generateIsolines() finished with', lines.length, 'isoline segments');
+
+            // Count isolines per level
+            const countsPerLevel = {};
+            for (const line of lines) {
+                countsPerLevel[line.level] = (countsPerLevel[line.level] || 0) + 1;
+            }
+            console.log('  Isolines per level:', countsPerLevel);
 
             return lines;
         }
@@ -739,12 +758,27 @@
 
             // Create Delaunay triangulation
             console.log('Creating Delaunay triangulation...');
-            const delaunay = new Delaunay(points);
-            edges = delaunay.edges;
-            triangles = delaunay.triangles;
-            console.log('Created', triangles.length, 'triangles and', edges.length, 'edges');
+            try {
+                const delaunay = new Delaunay(points);
+                console.log('Delaunay object created');
+                edges = delaunay.edges;
+                triangles = delaunay.triangles;
+                console.log('Created', triangles.length, 'triangles and', edges.length, 'edges');
+
+                if (edges.length === 0) {
+                    console.error('ERROR: No edges were created!');
+                }
+                if (triangles.length === 0) {
+                    console.error('ERROR: No triangles were created!');
+                }
+            } catch (error) {
+                console.error('ERROR in Delaunay triangulation:', error);
+                edges = [];
+                triangles = [];
+            }
 
             // Calculate edge steepness
+            console.log('Calculating edge steepness...');
             for (const edge of edges) {
                 const dx = edge.p2.x - edge.p1.x;
                 const dy = edge.p2.y - edge.p1.y;
@@ -752,11 +786,21 @@
                 const elevationDiff = Math.abs(edge.p2.normalizedElevation - edge.p1.normalizedElevation);
                 edge.steepness = distance > 0 ? elevationDiff / distance : 0;
             }
+            console.log('Edge steepness calculated');
 
             // Generate isolines using triangle-based approach
             console.log('Generating isolines...');
-            isolines = generateIsolines(triangles, points);
-            console.log('Generated', isolines.length, 'isoline segments');
+            try {
+                isolines = generateIsolines(triangles, points);
+                console.log('Generated', isolines.length, 'isoline segments');
+
+                if (isolines.length === 0) {
+                    console.warn('WARNING: No isolines were generated!');
+                }
+            } catch (error) {
+                console.error('ERROR in isoline generation:', error);
+                isolines = [];
+            }
 
             // Sample some isolines
             if (isolines.length > 0) {
