@@ -435,7 +435,8 @@
                 const p3 = { x: midx + 20 * deltaMax, y: midy - deltaMax };
 
                 console.log('  Super triangle vertices:', { p1, p2, p3 });
-                this.triangles.push([p1, p2, p3]);
+                // Push in counter-clockwise order [p1, p3, p2] instead of [p1, p2, p3]
+                this.triangles.push([p1, p3, p2]);
 
                 // Add points one at a time
                 let pointsProcessed = 0;
