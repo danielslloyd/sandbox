@@ -147,6 +147,15 @@
             <button id="toggleEdges" style="background: #2196F3;">Toggle Edges</button>
             <button id="toggleIsolines" style="background: #2196F3;">Toggle Isolines</button>
         </div>
+
+        <div class="control-group" style="margin-top: 20px;">
+            <h3 style="margin-bottom: 10px;">Pathfinding</h3>
+            <button id="togglePathfinding" style="background: #FF9800;">Enable Pathfinding</button>
+            <button id="clearPath" style="background: #f44336;">Clear Path</button>
+            <p style="font-size: 11px; color: #888; margin-top: 10px;">
+                Enable pathfinding, then click two nodes to find the optimal path considering elevation changes.
+            </p>
+        </div>
     </div>
 
     <div id="tooltip"></div>
@@ -168,6 +177,12 @@
         let showIsolines = true;
         let selectedNode = null;
         let medianEdgeLength = 0;
+
+        // Pathfinding state
+        let pathfindingMode = false;
+        let startNode = null;
+        let endNode = null;
+        let currentPath = null;
 
         function resizeCanvas() {
             width = window.innerWidth;
@@ -1057,6 +1072,209 @@
             ctx.stroke();
         }
 
+        // Calculate directional travel cost between two nodes
+        // Going uphill is more costly than going downhill
+        function calculateTravelCost(fromNode, toNode) {
+            const dx = toNode.x - fromNode.x;
+            const dy = toNode.y - fromNode.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            const elevationChange = toNode.normalizedElevation - fromNode.normalizedElevation;
+
+            // Base cost is the distance
+            let cost = distance;
+
+            // Add elevation penalties/bonuses
+            if (elevationChange > 0) {
+                // Going uphill: add significant cost (3x the elevation gain)
+                cost += elevationChange * distance * 0.5;
+            } else {
+                // Going downhill: small penalty for steep descents (0.5x the elevation loss)
+                cost += Math.abs(elevationChange) * distance * 0.1;
+            }
+
+            return cost;
+        }
+
+        // A* pathfinding algorithm
+        function findPath(startNode, endNode) {
+            if (!startNode || !endNode || startNode === endNode) {
+                return null;
+            }
+
+            console.log('Finding path from', startNode, 'to', endNode);
+
+            // Initialize all nodes
+            for (const point of points) {
+                point.gScore = Infinity;
+                point.fScore = Infinity;
+                point.cameFrom = null;
+                point.inOpenSet = false;
+                point.inClosedSet = false;
+            }
+
+            // Heuristic function (Euclidean distance)
+            function heuristic(node, goal) {
+                const dx = goal.x - node.x;
+                const dy = goal.y - node.y;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+
+            // Priority queue (simple array-based implementation)
+            const openSet = [];
+
+            startNode.gScore = 0;
+            startNode.fScore = heuristic(startNode, endNode);
+            startNode.inOpenSet = true;
+            openSet.push(startNode);
+
+            while (openSet.length > 0) {
+                // Find node with lowest fScore
+                openSet.sort((a, b) => a.fScore - b.fScore);
+                const current = openSet.shift();
+                current.inOpenSet = false;
+
+                // Goal reached
+                if (current === endNode) {
+                    // Reconstruct path
+                    const path = [];
+                    let node = endNode;
+                    while (node) {
+                        path.unshift(node);
+                        node = node.cameFrom;
+                    }
+                    console.log('Path found with', path.length, 'nodes');
+                    return path;
+                }
+
+                current.inClosedSet = true;
+
+                // Check all neighbors
+                for (const neighborData of current.neighbors) {
+                    const neighbor = neighborData.node;
+
+                    if (neighbor.inClosedSet) {
+                        continue;
+                    }
+
+                    // Calculate tentative gScore
+                    const tentativeGScore = current.gScore + calculateTravelCost(current, neighbor);
+
+                    if (tentativeGScore < neighbor.gScore) {
+                        // This path is better
+                        neighbor.cameFrom = current;
+                        neighbor.gScore = tentativeGScore;
+                        neighbor.fScore = tentativeGScore + heuristic(neighbor, endNode);
+
+                        if (!neighbor.inOpenSet) {
+                            neighbor.inOpenSet = true;
+                            openSet.push(neighbor);
+                        }
+                    }
+                }
+            }
+
+            // No path found
+            console.log('No path found');
+            return null;
+        }
+
+        // Draw the pathfinding path
+        function drawPath() {
+            if (!currentPath || currentPath.length < 2) return;
+
+            // Draw path line
+            ctx.strokeStyle = 'rgba(255, 0, 255, 0.8)';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(currentPath[0].x, currentPath[0].y);
+            for (let i = 1; i < currentPath.length; i++) {
+                ctx.lineTo(currentPath[i].x, currentPath[i].y);
+            }
+            ctx.stroke();
+
+            // Draw waypoints
+            ctx.fillStyle = 'rgba(255, 0, 255, 0.6)';
+            for (let i = 1; i < currentPath.length - 1; i++) {
+                ctx.beginPath();
+                ctx.arc(currentPath[i].x, currentPath[i].y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw start node (green)
+            if (startNode) {
+                ctx.fillStyle = 'rgba(0, 255, 0, 1)';
+                ctx.strokeStyle = 'rgba(0, 255, 0, 1)';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(startNode.x, startNode.y, 10, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            // Draw end node (red)
+            if (endNode) {
+                ctx.fillStyle = 'rgba(255, 0, 0, 1)';
+                ctx.strokeStyle = 'rgba(255, 0, 0, 1)';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(endNode.x, endNode.y, 10, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            // Calculate and display path info
+            let totalCost = 0;
+            let totalDistance = 0;
+            let totalElevationGain = 0;
+            let totalElevationLoss = 0;
+
+            for (let i = 0; i < currentPath.length - 1; i++) {
+                const from = currentPath[i];
+                const to = currentPath[i + 1];
+                totalCost += calculateTravelCost(from, to);
+
+                const dx = to.x - from.x;
+                const dy = to.y - from.y;
+                totalDistance += Math.sqrt(dx * dx + dy * dy);
+
+                const elevChange = to.normalizedElevation - from.normalizedElevation;
+                if (elevChange > 0) {
+                    totalElevationGain += elevChange;
+                } else {
+                    totalElevationLoss += Math.abs(elevChange);
+                }
+            }
+
+            // Display path stats
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.fillRect(width - 250, 10, 240, 100);
+            ctx.fillStyle = '#fff';
+            ctx.font = '14px Arial';
+            ctx.fillText(`Path Length: ${currentPath.length} nodes`, width - 240, 30);
+            ctx.fillText(`Distance: ${totalDistance.toFixed(1)}`, width - 240, 50);
+            ctx.fillText(`Travel Cost: ${totalCost.toFixed(1)}`, width - 240, 70);
+            ctx.fillText(`Elevation ↑: ${totalElevationGain.toFixed(1)}`, width - 240, 90);
+            ctx.fillText(`Elevation ↓: ${totalElevationLoss.toFixed(1)}`, width - 240, 110);
+        }
+
+        // Draw pathfinding selection indicators
+        function drawPathfindingSelection() {
+            if (!pathfindingMode) return;
+
+            // Draw start node if selected
+            if (startNode && !currentPath) {
+                ctx.strokeStyle = 'rgba(0, 255, 0, 1)';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.arc(startNode.x, startNode.y, 15, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+
         function render() {
             console.log('=== RENDER START ===');
             console.log('showPoints:', showPoints, 'showEdges:', showEdges, 'showIsolines:', showIsolines);
@@ -1087,7 +1305,15 @@
             }
 
             // Draw visibility indicators if a node is selected
-            drawVisibility();
+            if (!pathfindingMode) {
+                drawVisibility();
+            }
+
+            // Draw pathfinding visualization
+            if (pathfindingMode) {
+                drawPathfindingSelection();
+                drawPath();
+            }
 
             console.log('=== RENDER END ===');
         }
@@ -1098,6 +1324,9 @@
 
             // Clear selection when generating new terrain
             selectedNode = null;
+            startNode = null;
+            endNode = null;
+            currentPath = null;
 
             const distributionType = document.getElementById('distributionType').value;
             const numPoints = parseInt(document.getElementById('numPoints').value);
@@ -1178,6 +1407,17 @@
                 edge.steepness = distance > 0 ? elevationDiff / distance : 0;
             }
             console.log('Edge steepness calculated');
+
+            // Build adjacency list for pathfinding
+            console.log('Building adjacency list for pathfinding...');
+            for (const point of points) {
+                point.neighbors = [];
+            }
+            for (const edge of edges) {
+                edge.p1.neighbors.push({ node: edge.p2, edge: edge });
+                edge.p2.neighbors.push({ node: edge.p1, edge: edge });
+            }
+            console.log('Adjacency list built');
 
             // Generate isolines using triangle-based approach
             console.log('Generating isolines...');
@@ -1297,11 +1537,35 @@
                 }
             }
 
-            // Toggle selection
-            if (clickedNode === selectedNode) {
-                selectedNode = null; // Deselect if clicking the same node
+            if (pathfindingMode) {
+                // Pathfinding mode: select start and end nodes
+                if (!startNode) {
+                    startNode = clickedNode;
+                    console.log('Start node selected:', startNode);
+                } else if (!endNode && clickedNode !== startNode) {
+                    endNode = clickedNode;
+                    console.log('End node selected:', endNode);
+                    // Find path
+                    currentPath = findPath(startNode, endNode);
+                    if (!currentPath) {
+                        alert('No path found between the selected nodes!');
+                        startNode = null;
+                        endNode = null;
+                    }
+                } else {
+                    // Reset if clicking again
+                    startNode = clickedNode;
+                    endNode = null;
+                    currentPath = null;
+                    console.log('Reset - Start node selected:', startNode);
+                }
             } else {
-                selectedNode = clickedNode;
+                // Visibility mode: toggle selection
+                if (clickedNode === selectedNode) {
+                    selectedNode = null; // Deselect if clicking the same node
+                } else {
+                    selectedNode = clickedNode;
+                }
             }
 
             render();
@@ -1341,6 +1605,36 @@
         document.getElementById('toggleIsolines').addEventListener('click', () => {
             showIsolines = !showIsolines;
             console.log('Toggled showIsolines to:', showIsolines);
+            render();
+        });
+
+        document.getElementById('togglePathfinding').addEventListener('click', () => {
+            pathfindingMode = !pathfindingMode;
+            const btn = document.getElementById('togglePathfinding');
+            if (pathfindingMode) {
+                btn.textContent = 'Disable Pathfinding';
+                btn.style.background = '#FF5722';
+                // Clear pathfinding state
+                startNode = null;
+                endNode = null;
+                currentPath = null;
+            } else {
+                btn.textContent = 'Enable Pathfinding';
+                btn.style.background = '#FF9800';
+                // Clear pathfinding state
+                startNode = null;
+                endNode = null;
+                currentPath = null;
+            }
+            console.log('Toggled pathfindingMode to:', pathfindingMode);
+            render();
+        });
+
+        document.getElementById('clearPath').addEventListener('click', () => {
+            startNode = null;
+            endNode = null;
+            currentPath = null;
+            console.log('Cleared path');
             render();
         });
 
