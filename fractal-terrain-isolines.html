@@ -1074,6 +1074,7 @@
 
         // Calculate directional travel cost between two nodes
         // Going uphill is more costly than going downhill
+        // Uses quadratic cost for elevation gain to strongly prefer gradual slopes
         function calculateTravelCost(fromNode, toNode) {
             const dx = toNode.x - fromNode.x;
             const dy = toNode.y - fromNode.y;
@@ -1086,10 +1087,13 @@
 
             // Add elevation penalties/bonuses
             if (elevationChange > 0) {
-                // Going uphill: add significant cost (3x the elevation gain)
-                cost += elevationChange * distance * 0.5;
+                // Going uphill: quadratic cost scaling
+                // This makes steep climbs MUCH more expensive than gradual ones
+                // For example: climbing 1 unit = ~2x cost, climbing 2 units = ~8x cost
+                const steepnessPenalty = elevationChange * elevationChange * distance * 0.3;
+                cost += steepnessPenalty;
             } else {
-                // Going downhill: small penalty for steep descents (0.5x the elevation loss)
+                // Going downhill: small linear penalty for steep descents
                 cost += Math.abs(elevationChange) * distance * 0.1;
             }
 
