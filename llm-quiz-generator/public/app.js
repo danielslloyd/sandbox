@@ -15,6 +15,54 @@ const btnLoader = document.querySelector('.btn-loader');
 
 // State
 let currentResults = [];
+let installedModels = new Set();
+let ollamaRunning = false;
+
+// Recommended local models with metadata
+const RECOMMENDED_MODELS = [
+    {
+        id: 'llama3.1:8b-instruct-q4_K_M',
+        displayName: 'Llama 3.1 8B',
+        description: 'Fast, excellent quality',
+        size: '~5GB',
+        recommended: true
+    },
+    {
+        id: 'qwen2.5:14b-instruct-q4_K_M',
+        displayName: 'Qwen 2.5 14B',
+        description: 'Best for factual/historical content',
+        size: '~8.5GB',
+        recommended: true
+    },
+    {
+        id: 'mistral:7b-instruct-v0.2-q4_K_M',
+        displayName: 'Mistral 7B',
+        description: 'Great reasoning',
+        size: '~4.4GB',
+        recommended: false
+    },
+    {
+        id: 'gemma2:9b-instruct-q4_K_M',
+        displayName: 'Gemma 2 9B',
+        description: 'Good balanced performance',
+        size: '~5.5GB',
+        recommended: false
+    },
+    {
+        id: 'phi3:14b-medium-4k-instruct-q4_K_M',
+        displayName: 'Phi-3 Medium 14B',
+        description: 'Efficient high-quality output',
+        size: '~8GB',
+        recommended: false
+    },
+    {
+        id: 'neural-chat:7b-v3.3-q4_K_M',
+        displayName: 'Neural Chat 7B',
+        description: 'Good for educational content',
+        size: '~4.1GB',
+        recommended: false
+    }
+];
 
 // Event Listeners
 generateBtn.addEventListener('click', handleGenerate);
@@ -48,6 +96,203 @@ topicInput.addEventListener('keypress', (e) => {
         handleGenerate();
     }
 });
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+    checkOllamaStatus();
+});
+
+/**
+ * Check Ollama status and load installed models
+ */
+async function checkOllamaStatus() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/ollama/status`);
+        const data = await response.json();
+
+        ollamaRunning = data.running;
+
+        if (ollamaRunning) {
+            await loadInstalledModels();
+        } else {
+            showOllamaNotRunning();
+        }
+    } catch (error) {
+        console.error('Error checking Ollama status:', error);
+        showOllamaNotRunning();
+    }
+}
+
+/**
+ * Load installed Ollama models
+ */
+async function loadInstalledModels() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/ollama/models`);
+        const data = await response.json();
+
+        if (data.success) {
+            // Store installed model names
+            installedModels = new Set(data.models.map(m => m.name));
+
+            // Populate the local models UI
+            populateLocalModels();
+
+            if (data.count > 0) {
+                document.getElementById('ollamaStatusText').textContent =
+                    `✓ Ollama running with ${data.count} model(s) installed`;
+            } else {
+                document.getElementById('ollamaStatusText').textContent =
+                    `⚠️ Ollama running, but no models installed yet. Install models below.`;
+            }
+        } else {
+            showOllamaNotRunning();
+        }
+    } catch (error) {
+        console.error('Error loading models:', error);
+        showOllamaNotRunning();
+    }
+}
+
+/**
+ * Populate local models section with recommended models
+ */
+function populateLocalModels() {
+    const container = document.getElementById('localModels');
+    container.innerHTML = '';
+
+    RECOMMENDED_MODELS.forEach(model => {
+        const isInstalled = installedModels.has(model.id);
+        const card = createModelCard(model, isInstalled);
+        container.appendChild(card);
+    });
+}
+
+/**
+ * Create a model card with install button if needed
+ */
+function createModelCard(model, isInstalled) {
+    const card = document.createElement('div');
+    card.className = 'model-card';
+
+    if (isInstalled) {
+        // Installed model - show checkbox
+        card.innerHTML = `
+            <label class="model-checkbox">
+                <input type="checkbox" value="${model.id}" data-provider="ollama">
+                <div class="model-info">
+                    <span class="model-name">${model.displayName}</span>
+                    <span class="model-description">${model.description}</span>
+                </div>
+                <span class="model-badge ollama">✓ Installed</span>
+            </label>
+        `;
+    } else {
+        // Not installed - show install button
+        card.innerHTML = `
+            <div class="model-card-not-installed">
+                <div class="model-info">
+                    <span class="model-name">${model.displayName}</span>
+                    <span class="model-description">${model.description} • ${model.size}</span>
+                </div>
+                <button class="install-btn" data-model="${model.id}">
+                    📥 Install
+                </button>
+            </div>
+        `;
+
+        // Add click handler for install button
+        const installBtn = card.querySelector('.install-btn');
+        installBtn.addEventListener('click', () => installModel(model.id, installBtn));
+    }
+
+    return card;
+}
+
+/**
+ * Install a model
+ */
+async function installModel(modelId, button) {
+    button.disabled = true;
+    button.innerHTML = '⏳ Installing...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/ollama/pull`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ model: modelId })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to start model download');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.substring(6));
+
+                        if (data.status === 'complete') {
+                            button.innerHTML = '✓ Installed';
+
+                            // Refresh the models list
+                            setTimeout(() => {
+                                loadInstalledModels();
+                            }, 1000);
+                            return;
+                        } else if (data.status === 'downloading' && data.completed && data.total) {
+                            const percent = Math.round((data.completed / data.total) * 100);
+                            button.innerHTML = `⏳ ${percent}%`;
+                        } else if (data.status) {
+                            button.innerHTML = `⏳ ${data.status}`;
+                        }
+                    } catch (e) {
+                        // Ignore JSON parse errors
+                    }
+                }
+            }
+        }
+
+    } catch (error) {
+        console.error('Error installing model:', error);
+        button.innerHTML = '❌ Failed';
+        button.disabled = false;
+        showError(`Failed to install model: ${error.message}`);
+    }
+}
+
+/**
+ * Show Ollama not running message
+ */
+function showOllamaNotRunning() {
+    const statusDiv = document.getElementById('ollamaStatus');
+    statusDiv.style.display = 'block';
+    document.getElementById('ollamaStatusText').innerHTML =
+        `❌ Ollama not running. Start it with: <code>./start.sh</code> or <code>ollama serve</code>`;
+
+    // Show message in local models area
+    const container = document.getElementById('localModels');
+    container.innerHTML = `
+        <div class="status-message warning">
+            <p><strong>Ollama Not Running</strong></p>
+            <p>Local models require Ollama to be running.</p>
+            <p>Run the startup script: <code>./start.sh</code></p>
+            <p>Or start manually: <code>ollama serve</code></p>
+        </div>
+    `;
+}
 
 /**
  * Main generation handler

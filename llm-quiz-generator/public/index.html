@@ -60,40 +60,15 @@
                         </label>
                     </div>
                     <div class="model-selection" id="localModels" style="display: none;">
-                        <label class="model-checkbox">
-                            <input type="checkbox" value="llama3.1:8b-instruct-q4_K_M" data-provider="ollama">
-                            <span class="model-name">Llama 3.1 8B</span>
-                            <span class="model-badge ollama">Local</span>
-                        </label>
-                        <label class="model-checkbox">
-                            <input type="checkbox" value="mistral:7b-instruct-v0.2-q4_K_M" data-provider="ollama">
-                            <span class="model-name">Mistral 7B</span>
-                            <span class="model-badge ollama">Local</span>
-                        </label>
-                        <label class="model-checkbox">
-                            <input type="checkbox" value="qwen2.5:14b-instruct-q4_K_M" data-provider="ollama">
-                            <span class="model-name">Qwen 2.5 14B</span>
-                            <span class="model-badge ollama">Local</span>
-                        </label>
-                        <label class="model-checkbox">
-                            <input type="checkbox" value="gemma2:9b-instruct-q4_K_M" data-provider="ollama">
-                            <span class="model-name">Gemma 2 9B</span>
-                            <span class="model-badge ollama">Local</span>
-                        </label>
-                        <label class="model-checkbox">
-                            <input type="checkbox" value="phi3:14b-medium-4k-instruct-q4_K_M" data-provider="ollama">
-                            <span class="model-name">Phi-3 Medium 14B</span>
-                            <span class="model-badge ollama">Local</span>
-                        </label>
-                        <label class="model-checkbox">
-                            <input type="checkbox" value="neural-chat:7b-v3.3-q4_K_M" data-provider="ollama">
-                            <span class="model-name">Neural Chat 7B</span>
-                            <span class="model-badge ollama">Local</span>
-                        </label>
+                        <!-- Dynamically populated with installed models -->
+                    </div>
+                    <div id="ollamaStatus" style="display: none; margin-top: 1rem;">
+                        <div class="status-message info">
+                            <span id="ollamaStatusText">Checking Ollama status...</span>
+                        </div>
                     </div>
                     <p class="help-text" id="localHelp" style="display: none;">
-                        💡 Make sure Ollama is running: <code>ollama serve</code><br>
-                        📥 Install models: <code>ollama pull llama3.1:8b-instruct-q4_K_M</code>
+                        💡 Models are auto-detected. Click "📥 Install" to download missing models.
                     </p>
                 </div>
 

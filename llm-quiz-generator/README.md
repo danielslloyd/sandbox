@@ -17,11 +17,32 @@ A powerful web application that uses multiple Large Language Models (LLMs) to ge
 - **Privacy Option**: Use local models for 100% private, offline quiz generation
 - **History Focus**: Optimized for historical persons and events (extensible to other subjects)
 
-## 🚀 Quick Start
+## 🚀 Quick Start - Fully Automated!
+
+### One-Step Startup
+
+**macOS / Linux:**
+```bash
+./start.sh
+```
+
+**Windows:**
+```cmd
+start.bat
+```
+
+That's it! The script automatically:
+- ✅ Checks Node.js
+- ✅ Installs dependencies
+- ✅ Creates .env file
+- ✅ Starts Ollama (if installed)
+- ✅ Opens browser
+- ✅ Auto-detects installed models
+- ✅ Shows install buttons for missing models
 
 ### Prerequisites
 
-- Node.js (v14 or higher)
+- Node.js (v14 or higher) - [Install here](https://nodejs.org/)
 - **Option A - Cloud Models** (requires API keys):
   - [OpenAI API Key](https://platform.openai.com/api-keys) (~$0.01-0.05 per generation)
   - [Anthropic API Key](https://console.anthropic.com/) (~$0.01-0.03 per generation)
@@ -31,39 +52,23 @@ A powerful web application that uses multiple Large Language Models (LLMs) to ge
   - 16GB VRAM recommended (8GB minimum)
   - See [Local Models Guide](docs/LOCAL_MODELS_GUIDE.md) for full setup
 
-### Installation
+### First Time Setup
 
-1. **Clone or download this project**
+1. **Run the startup script**
    ```bash
-   cd llm-quiz-generator
+   ./start.sh        # macOS/Linux
+   # or
+   start.bat         # Windows
    ```
 
-2. **Install dependencies**
+2. **For Cloud Models** (optional): Add API keys to `.env`
+
+3. **For Local Models** (optional): Click "📥 Install" in the UI or:
    ```bash
-   npm install
+   ollama pull llama3.1:8b-instruct-q4_K_M
    ```
 
-3. **Configure API keys**
-   ```bash
-   cp .env.example .env
-   ```
-
-   Edit `.env` and add your API keys:
-   ```env
-   OPENAI_API_KEY=sk-...
-   ANTHROPIC_API_KEY=sk-ant-...
-   GOOGLE_API_KEY=...
-   ```
-
-4. **Start the server**
-   ```bash
-   npm start
-   ```
-
-5. **Open in browser**
-   ```
-   http://localhost:3000
-   ```
+**See [QUICK_START.md](QUICK_START.md) for detailed instructions.**
 
 ## 📖 Usage
 

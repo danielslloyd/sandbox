@@ -87,6 +87,103 @@ app.get('/api/keys-status', (req, res) => {
     });
 });
 
+// Ollama status endpoint
+app.get('/api/ollama/status', async (req, res) => {
+    const axios = require('axios');
+    const ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+
+    try {
+        await axios.get(`${ollamaUrl}/api/tags`, { timeout: 2000 });
+        res.json({ running: true, url: ollamaUrl });
+    } catch (error) {
+        res.json({ running: false, url: ollamaUrl, error: 'Ollama not running' });
+    }
+});
+
+// Get installed Ollama models
+app.get('/api/ollama/models', async (req, res) => {
+    const axios = require('axios');
+    const ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+
+    try {
+        const response = await axios.get(`${ollamaUrl}/api/tags`, { timeout: 5000 });
+        const models = response.data.models || [];
+
+        // Extract model names and metadata
+        const installedModels = models.map(model => ({
+            name: model.name,
+            size: model.size,
+            modified: model.modified_at
+        }));
+
+        res.json({
+            success: true,
+            models: installedModels,
+            count: installedModels.length
+        });
+    } catch (error) {
+        res.status(503).json({
+            success: false,
+            error: 'Could not connect to Ollama. Make sure it is running.',
+            models: []
+        });
+    }
+});
+
+// Pull/download a model
+app.post('/api/ollama/pull', async (req, res) => {
+    const axios = require('axios');
+    const { model } = req.body;
+    const ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+
+    if (!model) {
+        return res.status(400).json({ error: 'Model name is required' });
+    }
+
+    try {
+        // Start the pull in the background
+        console.log(`Starting download of model: ${model}`);
+
+        // Use streaming to monitor progress
+        const response = await axios.post(
+            `${ollamaUrl}/api/pull`,
+            { name: model },
+            {
+                responseType: 'stream',
+                timeout: 300000 // 5 minute timeout
+            }
+        );
+
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+        });
+
+        response.data.on('data', (chunk) => {
+            const data = chunk.toString();
+            res.write(`data: ${data}\n\n`);
+        });
+
+        response.data.on('end', () => {
+            res.write('data: {"status": "complete"}\n\n');
+            res.end();
+        });
+
+        response.data.on('error', (error) => {
+            res.write(`data: {"status": "error", "message": "${error.message}"}\n\n`);
+            res.end();
+        });
+
+    } catch (error) {
+        console.error('Error pulling model:', error.message);
+        res.status(500).json({
+            error: 'Failed to pull model',
+            details: error.message
+        });
+    }
+});
+
 // Serve index.html for root path
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
