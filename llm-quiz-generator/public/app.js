@@ -20,6 +20,28 @@ let currentResults = [];
 generateBtn.addEventListener('click', handleGenerate);
 exportBtn.addEventListener('click', handleExport);
 
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        const tab = e.target.dataset.tab;
+
+        // Update active tab
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+
+        // Show/hide model sections
+        if (tab === 'cloud') {
+            document.getElementById('cloudModels').style.display = 'grid';
+            document.getElementById('localModels').style.display = 'none';
+            document.getElementById('localHelp').style.display = 'none';
+        } else {
+            document.getElementById('cloudModels').style.display = 'none';
+            document.getElementById('localModels').style.display = 'grid';
+            document.getElementById('localHelp').style.display = 'block';
+        }
+    });
+});
+
 // Allow Enter key to trigger generation
 topicInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -191,11 +213,19 @@ function createResultCard(result) {
  */
 function getModelDisplayName(modelId) {
     const names = {
+        // Cloud models
         'gpt-4': 'GPT-4',
         'gpt-3.5-turbo': 'GPT-3.5 Turbo',
         'claude-3-5-sonnet-20241022': 'Claude 3.5 Sonnet',
         'claude-3-haiku-20240307': 'Claude 3 Haiku',
-        'gemini-pro': 'Gemini Pro'
+        'gemini-pro': 'Gemini Pro',
+        // Local models (Ollama)
+        'llama3.1:8b-instruct-q4_K_M': 'Llama 3.1 8B (Local)',
+        'mistral:7b-instruct-v0.2-q4_K_M': 'Mistral 7B (Local)',
+        'qwen2.5:14b-instruct-q4_K_M': 'Qwen 2.5 14B (Local)',
+        'gemma2:9b-instruct-q4_K_M': 'Gemma 2 9B (Local)',
+        'phi3:14b-medium-4k-instruct-q4_K_M': 'Phi-3 Medium 14B (Local)',
+        'neural-chat:7b-v3.3-q4_K_M': 'Neural Chat 7B (Local)'
     };
     return names[modelId] || modelId;
 }

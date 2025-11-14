@@ -1,17 +1,20 @@
 # 🎓 LLM Quiz Generator
 
-A powerful web application that uses multiple Large Language Models (LLMs) to generate high-quality quiz content for educational purposes. Select from GPT-4, Claude, Gemini, and more to create both correct answers and plausible distractors for multiple-choice quizzes.
+A powerful web application that uses multiple Large Language Models (LLMs) to generate high-quality quiz content for educational purposes. Select from cloud models like GPT-4, Claude, Gemini, or run models locally with Ollama to create both correct answers and plausible distractors for multiple-choice quizzes.
 
 ## ✨ Features
 
-- **Multi-Model Support**: Compare outputs from OpenAI (GPT-4, GPT-3.5), Anthropic (Claude), and Google (Gemini)
+- **Multi-Model Support**:
+  - **Cloud Models**: OpenAI (GPT-4, GPT-3.5), Anthropic (Claude), Google (Gemini)
+  - **Local Models**: Run Llama 3.1, Mistral, Qwen, Gemma, Phi-3 locally with Ollama (FREE!)
 - **Intelligent Content Generation**:
   - Generates factually accurate, educational answers
   - Creates plausible but incorrect "distractor" answers
   - Optimized prompts for best results from each model
-- **Beautiful UI**: Clean, modern interface with real-time feedback
+- **Beautiful UI**: Clean, modern interface with tabs for cloud/local models
 - **Parallel Processing**: Query multiple models simultaneously
 - **Easy Export**: Copy all results to clipboard for use in your quizzes
+- **Privacy Option**: Use local models for 100% private, offline quiz generation
 - **History Focus**: Optimized for historical persons and events (extensible to other subjects)
 
 ## 🚀 Quick Start
@@ -19,10 +22,14 @@ A powerful web application that uses multiple Large Language Models (LLMs) to ge
 ### Prerequisites
 
 - Node.js (v14 or higher)
-- API keys for the LLM providers you want to use:
-  - [OpenAI API Key](https://platform.openai.com/api-keys)
-  - [Anthropic API Key](https://console.anthropic.com/)
-  - [Google AI API Key](https://makersuite.google.com/app/apikey)
+- **Option A - Cloud Models** (requires API keys):
+  - [OpenAI API Key](https://platform.openai.com/api-keys) (~$0.01-0.05 per generation)
+  - [Anthropic API Key](https://console.anthropic.com/) (~$0.01-0.03 per generation)
+  - [Google AI API Key](https://makersuite.google.com/app/apikey) (often free tier)
+- **Option B - Local Models** (FREE, requires GPU):
+  - Install [Ollama](https://ollama.com/download) for local LLM inference
+  - 16GB VRAM recommended (8GB minimum)
+  - See [Local Models Guide](docs/LOCAL_MODELS_GUIDE.md) for full setup
 
 ### Installation
 
@@ -62,7 +69,9 @@ A powerful web application that uses multiple Large Language Models (LLMs) to ge
 
 1. **Enter a Topic**: Type a historical person or event (e.g., "Abraham Lincoln", "The French Revolution")
 
-2. **Select Models**: Choose one or more AI models to compare outputs
+2. **Select Models**:
+   - Click "☁️ Cloud Models" tab for API-based models (GPT-4, Claude, Gemini)
+   - Click "🖥️ Local Models" tab for Ollama models (free, private, offline)
 
 3. **Configure**: Select how many wrong answers (distractors) you want (3-5 recommended)
 
@@ -72,21 +81,55 @@ A powerful web application that uses multiple Large Language Models (LLMs) to ge
 
 6. **Export**: Copy all results to clipboard for use in your quiz platform
 
+## 🖥️ Using Local Models (Ollama)
+
+**Why use local models?**
+- ✅ **FREE** - No API costs
+- ✅ **Private** - Your data never leaves your machine
+- ✅ **Offline** - Works without internet
+- ✅ **Fast** - With a good GPU, comparable to cloud APIs
+
+**Quick Setup:**
+```bash
+# 1. Install Ollama (macOS/Linux/Windows)
+# Download from: https://ollama.com/download
+
+# 2. Start Ollama
+ollama serve
+
+# 3. Download recommended models
+ollama pull llama3.1:8b-instruct-q4_K_M      # Fast, excellent quality
+ollama pull qwen2.5:14b-instruct-q4_K_M      # Best for factual content
+ollama pull mistral:7b-instruct-v0.2-q4_K_M  # Great reasoning
+
+# 4. Start the quiz generator
+npm start
+
+# 5. Select "🖥️ Local Models" tab in the UI
+```
+
+**📚 For detailed local model setup with 16GB VRAM recommendations, see [Local Models Guide](docs/LOCAL_MODELS_GUIDE.md)**
+
 ## 🏗️ Project Structure
 
 ```
 llm-quiz-generator/
-├── public/                 # Frontend files
-│   ├── index.html         # Main UI
-│   ├── styles.css         # Styling
-│   └── app.js             # Frontend logic
-├── services/              # Backend services
-│   ├── llmService.js      # LLM provider integrations
-│   └── prompts.js         # Optimized prompts
-├── server.js              # Express server
-├── package.json           # Dependencies
-├── .env.example           # Environment template
-└── README.md             # Documentation
+├── public/                       # Frontend files
+│   ├── index.html               # Main UI with cloud/local tabs
+│   ├── styles.css               # Styling
+│   └── app.js                   # Frontend logic
+├── services/                    # Backend services
+│   ├── llmService.js            # LLM provider integrations (cloud + Ollama)
+│   └── prompts.js               # Optimized prompts
+├── docs/                        # Documentation
+│   └── LOCAL_MODELS_GUIDE.md    # Complete local models setup guide
+├── examples/                    # Examples and samples
+│   └── sample-topics.md         # 100+ test topics
+├── server.js                    # Express server
+├── package.json                 # Dependencies
+├── .env.example                 # Environment template
+├── README.md                    # This file
+└── SETUP_GUIDE.md               # Detailed setup instructions
 ```
 
 ## 🎯 How It Works
@@ -131,6 +174,8 @@ The backend:
 
 ### Supported Models
 
+**Cloud Models:**
+
 **OpenAI:**
 - `gpt-4` - Most capable, best accuracy
 - `gpt-3.5-turbo` - Faster, more economical
@@ -141,6 +186,28 @@ The backend:
 
 **Google:**
 - `gemini-pro` - Strong factual accuracy
+
+**Local Models (Ollama):**
+
+**Llama (Meta):**
+- `llama3.1:8b-instruct-q4_K_M` - Excellent quality, fast (Recommended)
+
+**Mistral:**
+- `mistral:7b-instruct-v0.2-q4_K_M` - Great reasoning and instruction following
+
+**Qwen (Alibaba):**
+- `qwen2.5:14b-instruct-q4_K_M` - Exceptional for factual/historical content (Recommended)
+
+**Gemma (Google):**
+- `gemma2:9b-instruct-q4_K_M` - Good balanced performance
+
+**Phi (Microsoft):**
+- `phi3:14b-medium-4k-instruct-q4_K_M` - Efficient high-quality output
+
+**Neural Chat (Intel):**
+- `neural-chat:7b-v3.3-q4_K_M` - Good for educational content
+
+All local models use Q4_K_M quantization for optimal quality/size balance on 16GB VRAM.
 
 ## 💡 Tips for Best Results
 

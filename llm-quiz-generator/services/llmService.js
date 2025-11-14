@@ -14,6 +14,8 @@ async function generateQuizContent(topic, model, provider, numDistractors) {
             return await generateFromAnthropic(model, prompt);
         case 'google':
             return await generateFromGoogle(model, prompt);
+        case 'ollama':
+            return await generateFromOllama(model, prompt);
         default:
             throw new Error(`Unsupported provider: ${provider}`);
     }
@@ -138,6 +140,43 @@ async function generateFromGoogle(model, prompt) {
         return parseResponse(content);
     } catch (error) {
         throw new Error(`Google API error: ${error.response?.data?.error?.message || error.message}`);
+    }
+}
+
+/**
+ * Ollama (Local Models) API integration
+ */
+async function generateFromOllama(model, prompt) {
+    const ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+
+    try {
+        // Check if model is available
+        const response = await axios.post(
+            `${ollamaUrl}/api/generate`,
+            {
+                model: model,
+                prompt: prompt,
+                stream: false,
+                options: {
+                    temperature: 0.7,
+                    num_predict: 1000
+                }
+            },
+            {
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                timeout: 60000 // 60 second timeout for local generation
+            }
+        );
+
+        const content = response.data.response;
+        return parseResponse(content);
+    } catch (error) {
+        if (error.code === 'ECONNREFUSED') {
+            throw new Error('Ollama is not running. Start it with: ollama serve');
+        }
+        throw new Error(`Ollama API error: ${error.response?.data?.error || error.message}`);
     }
 }
 
