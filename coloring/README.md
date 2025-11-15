@@ -1,9 +1,21 @@
-# JPEG to SVG Coloring App Converter
+# JPEG to SVG Coloring App Suite
 
-A web application that converts JPEG/PNG images into SVG files optimized for children's coloring apps. The converter intelligently detects regions, merges small areas, and provides flexible line weight control.
+A collection of web tools for creating and optimizing SVG files for children's coloring apps. Includes an image-to-SVG converter and a path simplification utility.
 
-## Features
+## Quick Start
 
+1. **Convert an Image to SVG**: Open `index.html` in your browser
+2. **Simplify an Existing SVG**: Open `svg-simplifier.html` in your browser
+3. **Read SVG Best Practices**: See `svg-structure.md` for specifications
+
+No installation or build process required - all tools run directly in your browser!
+
+## Tools Included
+
+### 1. JPEG to SVG Converter (`index.html`)
+Main tool for converting raster images into SVG coloring pages.
+
+**Features:**
 - **Image to SVG Conversion**: Converts raster images (JPEG, PNG) to vector SVG format
 - **Edge Detection**: Uses Sobel edge detection with configurable sensitivity
 - **Region Analysis**: Automatically detects and analyzes enclosed regions
@@ -13,6 +25,38 @@ A web application that converts JPEG/PNG images into SVG files optimized for chi
   - **Dual Mode**: Boundary lines between different color sections have different weights than detail lines within sections
 - **Path Simplification**: Reduces SVG complexity while maintaining visual quality
 - **Interactive Preview**: View original, processed, and final SVG outputs
+
+**When to use:** Start with a photo or raster image and want to create an SVG coloring page.
+
+### 2. SVG Path Simplifier (`svg-simplifier.html`)
+Standalone tool for optimizing existing SVG files by reducing path complexity with interactive polygon editing.
+
+**Features:**
+- **Two Algorithms**: Choose between Douglas-Peucker or Visvalingam simplification
+  - **Douglas-Peucker**: Distance-based, great for geometric shapes
+  - **Visvalingam**: Area-based, better preserves natural shape characteristics
+- **Interactive Tolerance Slider**: Real-time control over compression level (0.1-10)
+- **Intersection Detection**: Identifies when paths cross each other
+- **Intersection Avoidance**: Auto-adjusts to maintain path integrity (built into Visvalingam)
+- **Coordinate Rounding**: Reduces file size without visible quality loss
+- **Before/After Comparison**: Side-by-side preview with statistics
+- **Point Reduction Stats**: See exactly how many points were removed and percentage reduction
+- **Drag-and-Drop**: Easy file upload interface
+
+**Polygon Editing Tools (NEW):**
+- **Merge Polygons**: Click on shared edges between adjacent polygons to combine them into one
+- **Split Polygons**: Click two points within a polygon to divide it into two separate polygons
+- **Undo/Redo**: Full history support for all editing operations
+- **Visual Feedback**: Highlights edges and points during editing
+- **Interactive Modes**: Switch between View, Merge, and Split modes
+
+**When to use:** You already have an SVG file (hand-drawn or generated) and want to optimize it by reducing file size and complexity while maintaining visual quality.
+
+**Use cases:**
+- Reduce file size of hand-drawn SVG coloring pages
+- Optimize SVGs exported from design tools (Inkscape, Illustrator, Figma)
+- Clean up overly complex paths with too many points
+- Prepare SVGs for web use or mobile apps
 
 ## How It Works
 
@@ -172,12 +216,16 @@ Recommended maximum image size: 1500x1500 pixels for optimal performance
 
 ```
 coloring/
-├── index.html          # Main HTML structure
-├── style.css           # Styling and layout
-├── app.js             # UI controller and event handling
-├── imageProcessor.js  # Edge detection and image processing
-├── svgGenerator.js    # Region detection and SVG generation
-└── README.md          # This file
+├── index.html              # JPEG to SVG converter (main tool)
+├── style.css               # Styling for main converter
+├── app.js                  # UI controller and event handling
+├── imageProcessor.js       # Edge detection and image processing
+├── svgGenerator.js         # Region detection and SVG generation
+├── svg-simplifier.html     # SVG path simplifier tool
+├── svg-simplifier.js       # Path simplification logic
+├── svg-structure.md        # SVG specifications for coloring apps
+├── build-specification.md  # Technical build documentation
+└── README.md              # This file
 ```
 
 ## Use Cases
