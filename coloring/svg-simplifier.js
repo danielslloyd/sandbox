@@ -251,6 +251,7 @@ class SVGSimplifier {
         const tolerance = parseFloat(this.toleranceSlider.value);
         const preventIntersections = this.preventIntersections.checked;
         const roundCoords = this.roundCoordinates.checked;
+        const algorithm = document.querySelector('input[name="algorithm"]:checked').value;
 
         this.simplifyBtn.disabled = true;
         this.showStatus('Simplifying paths...', 'info');
@@ -262,9 +263,14 @@ class SVGSimplifier {
                 let adjustedTolerance = tolerance;
                 let hasIntersections = false;
 
+                // Choose simplification method based on algorithm
+                const simplifyMethod = algorithm === 'visvalingam'
+                    ? this.visvalingam.bind(this)
+                    : this.douglasPeucker.bind(this);
+
                 // Simplify all paths
                 this.originalPaths.forEach(pathData => {
-                    const simplified = this.douglasPeucker(pathData.points, adjustedTolerance);
+                    const simplified = simplifyMethod(pathData.points, adjustedTolerance);
                     this.simplifiedPaths.push({
                         ...pathData,
                         simplifiedPoints: simplified,
@@ -294,7 +300,7 @@ class SVGSimplifier {
 
                         this.simplifiedPaths = [];
                         this.originalPaths.forEach(pathData => {
-                            const simplified = this.douglasPeucker(pathData.points, adjustedTolerance);
+                            const simplified = simplifyMethod(pathData.points, adjustedTolerance);
                             this.simplifiedPaths.push({
                                 ...pathData,
                                 simplifiedPoints: simplified,
@@ -366,6 +372,145 @@ class SVGSimplifier {
             return left.slice(0, -1).concat(right);
         } else {
             return [start, end];
+        }
+    }
+
+    visvalingam(points, threshold) {
+        if (points.length <= 2) return points;
+
+        // Create array of point objects with their triangular areas
+        const pointsWithAreas = points.map((point, index) => ({
+            point: point,
+            index: index,
+            area: this.calculateTriangleArea(points, index),
+            removed: false
+        }));
+
+        // Keep first and last points
+        pointsWithAreas[0].area = Infinity;
+        pointsWithAreas[pointsWithAreas.length - 1].area = Infinity;
+
+        // Count how many points to remove based on threshold
+        // Higher threshold = remove more points
+        const targetPointCount = Math.max(2, Math.floor(points.length / (1 + threshold / 2)));
+        const pointsToRemove = points.length - targetPointCount;
+
+        // Build a min-heap of points by area
+        const heap = [];
+        for (let i = 1; i < pointsWithAreas.length - 1; i++) {
+            heap.push(pointsWithAreas[i]);
+        }
+        heap.sort((a, b) => a.area - b.area);
+
+        // Remove points with smallest areas
+        for (let i = 0; i < Math.min(pointsToRemove, heap.length); i++) {
+            const pointToRemove = heap[i];
+
+            // Check if removing this point would create an intersection
+            if (this.wouldCreateIntersection(pointsWithAreas, pointToRemove.index)) {
+                // Promote this point's area to next largest (intersection avoidance)
+                const nextLargestArea = i + 1 < heap.length ? heap[i + 1].area : pointToRemove.area;
+                pointToRemove.area = nextLargestArea;
+                // Don't remove this point yet
+            } else {
+                pointToRemove.removed = true;
+
+                // Recalculate areas for neighbors
+                this.updateNeighborAreas(pointsWithAreas, pointToRemove.index);
+            }
+        }
+
+        // Return remaining points in original order
+        return pointsWithAreas
+            .filter(p => !p.removed)
+            .map(p => p.point);
+    }
+
+    calculateTriangleArea(points, index) {
+        if (index === 0 || index === points.length - 1) {
+            return Infinity;
+        }
+
+        const prev = points[index - 1];
+        const curr = points[index];
+        const next = points[index + 1];
+
+        // Calculate area using cross product
+        const area = Math.abs(
+            (prev.x * (curr.y - next.y) +
+             curr.x * (next.y - prev.y) +
+             next.x * (prev.y - curr.y)) / 2
+        );
+
+        return area;
+    }
+
+    wouldCreateIntersection(pointsWithAreas, removeIndex) {
+        // Simple check: see if removing this point would create a crossing
+        // by checking if the new edge (prev to next) intersects with any existing edges
+
+        if (removeIndex === 0 || removeIndex === pointsWithAreas.length - 1) {
+            return false;
+        }
+
+        // Find previous and next non-removed points
+        let prevIndex = removeIndex - 1;
+        while (prevIndex >= 0 && pointsWithAreas[prevIndex].removed) {
+            prevIndex--;
+        }
+
+        let nextIndex = removeIndex + 1;
+        while (nextIndex < pointsWithAreas.length && pointsWithAreas[nextIndex].removed) {
+            nextIndex++;
+        }
+
+        if (prevIndex < 0 || nextIndex >= pointsWithAreas.length) {
+            return false;
+        }
+
+        const prev = pointsWithAreas[prevIndex].point;
+        const next = pointsWithAreas[nextIndex].point;
+
+        // Check if new edge (prev to next) would intersect with other edges
+        for (let i = 0; i < pointsWithAreas.length - 1; i++) {
+            if (pointsWithAreas[i].removed || pointsWithAreas[i + 1].removed) {
+                continue;
+            }
+
+            // Skip adjacent edges
+            if (i === prevIndex || i + 1 === prevIndex || i === nextIndex || i + 1 === nextIndex) {
+                continue;
+            }
+
+            if (this.segmentsIntersect(
+                prev, next,
+                pointsWithAreas[i].point, pointsWithAreas[i + 1].point
+            )) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    updateNeighborAreas(pointsWithAreas, removedIndex) {
+        // Recalculate triangle areas for points adjacent to removed point
+        const points = pointsWithAreas.map(p => p.point);
+
+        // Update previous point's area
+        if (removedIndex > 0 && !pointsWithAreas[removedIndex - 1].removed) {
+            pointsWithAreas[removedIndex - 1].area = this.calculateTriangleArea(
+                points.filter((p, i) => !pointsWithAreas[i].removed),
+                removedIndex - 1
+            );
+        }
+
+        // Update next point's area
+        if (removedIndex < pointsWithAreas.length - 1 && !pointsWithAreas[removedIndex + 1].removed) {
+            pointsWithAreas[removedIndex + 1].area = this.calculateTriangleArea(
+                points.filter((p, i) => !pointsWithAreas[i].removed),
+                removedIndex + 1
+            );
         }
     }
 

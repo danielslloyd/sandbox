@@ -441,7 +441,9 @@ A standalone tool for optimizing SVG files by reducing path complexity:
 - You want to optimize for web/mobile performance
 
 **Features:**
-- **Douglas-Peucker simplification**: Reduces points while maintaining shape
+- **Two simplification algorithms**:
+  - **Douglas-Peucker**: Distance-based simplification, ideal for geometric shapes
+  - **Visvalingam**: Area-based simplification with built-in intersection avoidance, better for organic shapes
 - **Intersection detection**: Prevents simplified paths from crossing
 - **Auto-adjustment**: Automatically finds optimal tolerance to avoid intersections
 - **Coordinate rounding**: Reduces file size without visible quality loss
@@ -450,17 +452,25 @@ A standalone tool for optimizing SVG files by reducing path complexity:
 **How to use:**
 1. Open `svg-simplifier.html` in your browser
 2. Drag and drop your SVG file
-3. Adjust the tolerance slider (higher = more simplification)
-4. Enable "Prevent path intersections" to auto-adjust if paths cross
-5. Enable "Round coordinates" to reduce file size
-6. Click "Simplify Paths" to process
-7. Download the optimized SVG
+3. Choose algorithm:
+   - Douglas-Peucker for geometric/technical drawings
+   - Visvalingam for hand-drawn or organic shapes
+4. Adjust the tolerance slider (higher = more simplification)
+5. Enable "Prevent path intersections" to auto-adjust if paths cross
+6. Enable "Round coordinates" to reduce file size
+7. Click "Simplify Paths" to process
+8. Download the optimized SVG
 
 **Recommended settings:**
+- **For coloring apps**: Use Visvalingam algorithm (built-in intersection avoidance)
 - Start with tolerance 2.0 and adjust based on results
-- Always keep "Prevent path intersections" enabled for coloring apps
+- Always keep "Prevent path intersections" enabled
 - Enable coordinate rounding for file size reduction
 - Aim for 30-50% point reduction for best quality/size balance
+
+**Algorithm comparison:**
+- **Douglas-Peucker**: Measures perpendicular distance from line segments. Fast and predictable, works well for straight lines and geometric shapes.
+- **Visvalingam**: Calculates triangular areas between points. Better preserves the visual characteristics of curves and organic shapes. Includes modified intersection avoidance that promotes points to prevent crossings.
 
 ### Example App Integration Code
 

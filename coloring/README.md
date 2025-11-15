@@ -32,10 +32,12 @@ Main tool for converting raster images into SVG coloring pages.
 Standalone tool for optimizing existing SVG files by reducing path complexity.
 
 **Features:**
-- **Douglas-Peucker Algorithm**: Industry-standard path simplification
+- **Two Algorithms**: Choose between Douglas-Peucker or Visvalingam simplification
+  - **Douglas-Peucker**: Distance-based, great for geometric shapes
+  - **Visvalingam**: Area-based, better preserves natural shape characteristics
 - **Interactive Tolerance Slider**: Real-time control over compression level (0.1-10)
 - **Intersection Detection**: Identifies when paths cross each other
-- **Intersection Avoidance**: Auto-adjusts tolerance to maintain path integrity
+- **Intersection Avoidance**: Auto-adjusts to maintain path integrity (built into Visvalingam)
 - **Coordinate Rounding**: Reduces file size without visible quality loss
 - **Before/After Comparison**: Side-by-side preview with statistics
 - **Point Reduction Stats**: See exactly how many points were removed and percentage reduction
