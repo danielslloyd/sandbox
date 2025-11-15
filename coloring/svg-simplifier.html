@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG Path Simplifier - Coloring App Tool</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .main-content {
+            padding: 30px;
+        }
+
+        .upload-section {
+            background: #f7f9fc;
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            background: #eef2f7;
+            border-color: #764ba2;
+        }
+
+        .upload-section.dragover {
+            background: #e0e7ff;
+            border-color: #4f46e5;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 4em;
+            margin-bottom: 15px;
+        }
+
+        .controls {
+            background: #f7f9fc;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #374151;
+            font-size: 1.05em;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: #d1d5db;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+
+        .slider-value {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+            margin-left: 10px;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            flex: 1;
+            padding: 15px 30px;
+            font-size: 1.1em;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 150px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(16, 185, 129, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .preview-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .preview-box {
+            background: #f7f9fc;
+            border-radius: 15px;
+            padding: 20px;
+            border: 2px solid #e5e7eb;
+        }
+
+        .preview-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #374151;
+            text-align: center;
+        }
+
+        .svg-container {
+            background: white;
+            border: 2px solid #d1d5db;
+            border-radius: 10px;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: auto;
+        }
+
+        .svg-container svg {
+            max-width: 100%;
+            max-height: 500px;
+        }
+
+        .stats {
+            background: #eef2f7;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+
+        .stats-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .stats-label {
+            color: #6b7280;
+        }
+
+        .stats-value {
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .reduction {
+            color: #10b981;
+            font-weight: 700;
+        }
+
+        .warning {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .warning.show {
+            display: block;
+        }
+
+        .warning-icon {
+            color: #f59e0b;
+            margin-right: 8px;
+        }
+
+        .status-message {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .status-message.show {
+            display: block;
+        }
+
+        .status-message.success {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+            color: #065f46;
+        }
+
+        .status-message.error {
+            background: #fee2e2;
+            border-left: 4px solid #ef4444;
+            color: #991b1b;
+        }
+
+        .status-message.info {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            color: #1e40af;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 768px) {
+            .preview-section {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎨 SVG Path Simplifier</h1>
+            <p class="subtitle">Optimize your SVG paths for coloring apps</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Upload Section -->
+            <div class="upload-section" id="uploadBox">
+                <div class="upload-icon">📁</div>
+                <h2>Drop SVG file here or click to browse</h2>
+                <p style="margin-top: 10px; color: #6b7280;">Supports .svg files</p>
+                <input type="file" id="fileInput" accept=".svg,image/svg+xml" style="display: none;">
+            </div>
+
+            <!-- Status Message -->
+            <div class="status-message" id="statusMessage"></div>
+
+            <!-- Controls -->
+            <div class="controls hidden" id="controls">
+                <div class="control-group">
+                    <label>
+                        Simplification Tolerance
+                        <span class="slider-value" id="toleranceValue">2.0</span>
+                    </label>
+                    <input type="range" id="toleranceSlider" min="0.1" max="10" step="0.1" value="2.0">
+                    <p style="margin-top: 8px; color: #6b7280; font-size: 0.9em;">
+                        Lower = More detail (more points), Higher = More simplified (fewer points)
+                    </p>
+                </div>
+
+                <div class="control-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="preventIntersections" checked>
+                        <label for="preventIntersections" style="margin: 0;">Prevent path intersections</label>
+                    </div>
+                    <p style="margin-top: 8px; color: #6b7280; font-size: 0.9em; margin-left: 30px;">
+                        Automatically adjusts tolerance to avoid creating path crossings
+                    </p>
+                </div>
+
+                <div class="control-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="roundCoordinates" checked>
+                        <label for="roundCoordinates" style="margin: 0;">Round coordinates to 1 decimal place</label>
+                    </div>
+                    <p style="margin-top: 8px; color: #6b7280; font-size: 0.9em; margin-left: 30px;">
+                        Reduces file size without visible quality loss
+                    </p>
+                </div>
+            </div>
+
+            <!-- Warning for intersections -->
+            <div class="warning" id="intersectionWarning">
+                <span class="warning-icon">⚠️</span>
+                <strong>Intersection detected!</strong> The current tolerance creates path crossings.
+                Reduce the tolerance or enable "Prevent path intersections" to fix this.
+            </div>
+
+            <!-- Buttons -->
+            <div class="button-group hidden" id="actionButtons">
+                <button class="btn-primary" id="simplifyBtn">Simplify Paths</button>
+                <button class="btn-secondary" id="downloadBtn" disabled>Download Simplified SVG</button>
+            </div>
+
+            <!-- Preview Section -->
+            <div class="preview-section hidden" id="previewSection">
+                <div class="preview-box">
+                    <div class="preview-title">Original</div>
+                    <div class="svg-container" id="originalPreview"></div>
+                    <div class="stats" id="originalStats"></div>
+                </div>
+
+                <div class="preview-box">
+                    <div class="preview-title">Simplified</div>
+                    <div class="svg-container" id="simplifiedPreview"></div>
+                    <div class="stats" id="simplifiedStats"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="svg-simplifier.js"></script>
+</body>
+</html>

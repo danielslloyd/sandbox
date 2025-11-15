@@ -410,8 +410,9 @@ console.assert(pathsWithClass.length > 0, 'No paths with fillable-path class');
 - Round coordinates to 1 decimal place
 - Run through SVGO optimizer
 
-## Integration with Coloring App
+## Tools for SVG Creation and Optimization
 
+### JPEG to SVG Converter (`index.html`)
 This specification is designed to work with the JPEG-to-SVG coloring app converter. The app will:
 
 1. **Generate outline-based SVGs** from uploaded JPEG images
@@ -419,8 +420,6 @@ This specification is designed to work with the JPEG-to-SVG coloring app convert
 3. **Create fillable paths** for each detected region
 4. **Apply line weights** based on boundary vs. detail classification
 5. **Enable click-to-color** interaction in the browser
-
-### App-Specific Considerations
 
 **Current implementation:**
 - Generates single-layer SVG with outlines only
@@ -431,6 +430,37 @@ This specification is designed to work with the JPEG-to-SVG coloring app convert
 - Follow this two-layer specification
 - App's JavaScript can detect `.fillable-path` class
 - Clicking a path changes its `fill` attribute
+
+### SVG Path Simplifier (`svg-simplifier.html`)
+A standalone tool for optimizing SVG files by reducing path complexity:
+
+**Use this tool when:**
+- Your SVG has too many points (slow rendering)
+- File size is too large (>50KB)
+- Paths are overly detailed from design tools
+- You want to optimize for web/mobile performance
+
+**Features:**
+- **Douglas-Peucker simplification**: Reduces points while maintaining shape
+- **Intersection detection**: Prevents simplified paths from crossing
+- **Auto-adjustment**: Automatically finds optimal tolerance to avoid intersections
+- **Coordinate rounding**: Reduces file size without visible quality loss
+- **Live preview**: See before/after comparison with statistics
+
+**How to use:**
+1. Open `svg-simplifier.html` in your browser
+2. Drag and drop your SVG file
+3. Adjust the tolerance slider (higher = more simplification)
+4. Enable "Prevent path intersections" to auto-adjust if paths cross
+5. Enable "Round coordinates" to reduce file size
+6. Click "Simplify Paths" to process
+7. Download the optimized SVG
+
+**Recommended settings:**
+- Start with tolerance 2.0 and adjust based on results
+- Always keep "Prevent path intersections" enabled for coloring apps
+- Enable coordinate rounding for file size reduction
+- Aim for 30-50% point reduction for best quality/size balance
 
 ### Example App Integration Code
 
