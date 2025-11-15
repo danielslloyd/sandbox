@@ -342,6 +342,98 @@
             display: none !important;
         }
 
+        .edit-mode-selector {
+            background: #f0f4ff;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .edit-mode-selector.show {
+            display: block;
+        }
+
+        .mode-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #667eea;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .mode-btn:hover {
+            background: #f0f4ff;
+        }
+
+        .mode-btn.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .mode-help {
+            background: white;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            color: #374151;
+        }
+
+        .svg-container.interactive {
+            cursor: crosshair;
+        }
+
+        .svg-container.interactive path {
+            cursor: pointer;
+        }
+
+        .svg-container.interactive path:hover {
+            opacity: 0.7;
+        }
+
+        .edge-highlight {
+            stroke: #f59e0b !important;
+            stroke-width: 3px !important;
+            pointer-events: none;
+        }
+
+        .point-marker {
+            fill: #10b981;
+            stroke: white;
+            stroke-width: 2px;
+            pointer-events: none;
+        }
+
+        .split-line {
+            stroke: #ef4444;
+            stroke-width: 2px;
+            stroke-dasharray: 5,5;
+            fill: none;
+            pointer-events: none;
+        }
+
+        .undo-redo-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .undo-redo-buttons button {
+            flex: 1;
+            padding: 10px;
+            font-size: 0.95em;
+        }
+
         @media (max-width: 768px) {
             .preview-section {
                 grid-template-columns: 1fr;
@@ -443,6 +535,22 @@
             <div class="button-group hidden" id="actionButtons">
                 <button class="btn-primary" id="simplifyBtn">Simplify Paths</button>
                 <button class="btn-secondary" id="downloadBtn" disabled>Download Simplified SVG</button>
+            </div>
+
+            <!-- Polygon Editing Mode -->
+            <div class="edit-mode-selector" id="editModeSelector">
+                <div class="undo-redo-buttons">
+                    <button class="btn-secondary" id="undoBtn" disabled>↶ Undo</button>
+                    <button class="btn-secondary" id="redoBtn" disabled>↷ Redo</button>
+                </div>
+                <div class="mode-buttons">
+                    <button class="mode-btn active" data-mode="view" id="viewModeBtn">👁️ View</button>
+                    <button class="mode-btn" data-mode="merge" id="mergeModeBtn">🔗 Merge Polygons</button>
+                    <button class="mode-btn" data-mode="split" id="splitModeBtn">✂️ Split Polygon</button>
+                </div>
+                <div class="mode-help" id="modeHelp">
+                    Click on paths to view them
+                </div>
             </div>
 
             <!-- Preview Section -->

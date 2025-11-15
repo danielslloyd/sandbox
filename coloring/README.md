@@ -29,7 +29,7 @@ Main tool for converting raster images into SVG coloring pages.
 **When to use:** Start with a photo or raster image and want to create an SVG coloring page.
 
 ### 2. SVG Path Simplifier (`svg-simplifier.html`)
-Standalone tool for optimizing existing SVG files by reducing path complexity.
+Standalone tool for optimizing existing SVG files by reducing path complexity with interactive polygon editing.
 
 **Features:**
 - **Two Algorithms**: Choose between Douglas-Peucker or Visvalingam simplification
@@ -42,6 +42,13 @@ Standalone tool for optimizing existing SVG files by reducing path complexity.
 - **Before/After Comparison**: Side-by-side preview with statistics
 - **Point Reduction Stats**: See exactly how many points were removed and percentage reduction
 - **Drag-and-Drop**: Easy file upload interface
+
+**Polygon Editing Tools (NEW):**
+- **Merge Polygons**: Click on shared edges between adjacent polygons to combine them into one
+- **Split Polygons**: Click two points within a polygon to divide it into two separate polygons
+- **Undo/Redo**: Full history support for all editing operations
+- **Visual Feedback**: Highlights edges and points during editing
+- **Interactive Modes**: Switch between View, Merge, and Split modes
 
 **When to use:** You already have an SVG file (hand-drawn or generated) and want to optimize it by reducing file size and complexity while maintaining visual quality.
 

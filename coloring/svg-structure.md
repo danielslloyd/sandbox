@@ -432,13 +432,14 @@ This specification is designed to work with the JPEG-to-SVG coloring app convert
 - Clicking a path changes its `fill` attribute
 
 ### SVG Path Simplifier (`svg-simplifier.html`)
-A standalone tool for optimizing SVG files by reducing path complexity:
+A standalone tool for optimizing SVG files by reducing path complexity with interactive polygon editing:
 
 **Use this tool when:**
 - Your SVG has too many points (slow rendering)
 - File size is too large (>50KB)
 - Paths are overly detailed from design tools
 - You want to optimize for web/mobile performance
+- You need to merge or split coloring regions after generation
 
 **Features:**
 - **Two simplification algorithms**:
@@ -448,6 +449,12 @@ A standalone tool for optimizing SVG files by reducing path complexity:
 - **Auto-adjustment**: Automatically finds optimal tolerance to avoid intersections
 - **Coordinate rounding**: Reduces file size without visible quality loss
 - **Live preview**: See before/after comparison with statistics
+
+**Polygon Editing Tools:**
+- **Merge mode**: Click on shared edges to combine adjacent polygons
+- **Split mode**: Click two points to divide a polygon into two regions
+- **Undo/Redo**: Full history tracking for all edits
+- **Visual feedback**: Highlights edges and snap points during editing
 
 **How to use:**
 1. Open `svg-simplifier.html` in your browser
@@ -459,7 +466,12 @@ A standalone tool for optimizing SVG files by reducing path complexity:
 5. Enable "Prevent path intersections" to auto-adjust if paths cross
 6. Enable "Round coordinates" to reduce file size
 7. Click "Simplify Paths" to process
-8. Download the optimized SVG
+
+**After simplification, you can edit polygons:**
+8. Switch to "Merge Polygons" mode to combine adjacent regions by clicking shared edges
+9. Switch to "Split Polygon" mode to divide regions by clicking two points
+10. Use Undo/Redo to navigate through edit history
+11. Download the final optimized SVG
 
 **Recommended settings:**
 - **For coloring apps**: Use Visvalingam algorithm (built-in intersection avoidance)
