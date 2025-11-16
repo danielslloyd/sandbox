@@ -34,6 +34,15 @@ def main():
     parser.add_argument('--quiet', action='store_true',
                         help='Reduce logging verbosity')
 
+    # LLM backend options
+    parser.add_argument('--backend', type=str, default='ollama',
+                        choices=['ollama', 'anthropic'],
+                        help='LLM backend for nutrition extraction (default: ollama)')
+    parser.add_argument('--ollama-model', type=str, default='llava',
+                        help='Ollama model to use (default: llava)')
+    parser.add_argument('--ollama-host', type=str, default='http://localhost:11434',
+                        help='Ollama server URL (default: http://localhost:11434)')
+
     args = parser.parse_args()
 
     verbose = not args.quiet
@@ -44,6 +53,10 @@ def main():
     print(f"Retailer: {args.retailer}")
     print(f"Database: {args.db_path}")
     print(f"Images: {args.image_dir}")
+    print(f"LLM Backend: {args.backend}")
+    if args.backend == 'ollama':
+        print(f"Ollama Model: {args.ollama_model}")
+        print(f"Ollama Host: {args.ollama_host}")
     print("=" * 80)
     print()
 
@@ -120,13 +133,22 @@ def main():
         print("=" * 80)
 
         try:
-            extractor = NutritionExtractor(verbose=verbose)
+            extractor = NutritionExtractor(
+                backend=args.backend,
+                ollama_model=args.ollama_model,
+                ollama_host=args.ollama_host,
+                verbose=verbose
+            )
             products = extractor.extract_all(products, image_map)
             print(f"\n✓ Extracted nutrition info")
 
-        except ValueError as e:
+        except (ValueError, ConnectionError) as e:
             print(f"\n⊗ Skipping nutrition extraction: {e}")
-            print("Set ANTHROPIC_API_KEY environment variable to enable nutrition extraction")
+            if args.backend == 'anthropic':
+                print("Set ANTHROPIC_API_KEY environment variable to enable Anthropic API")
+            elif args.backend == 'ollama':
+                print("Make sure Ollama is running: ollama serve")
+                print(f"And the model is available: ollama pull {args.ollama_model}")
 
         except Exception as e:
             print(f"\n✗ Error extracting nutrition: {e}")

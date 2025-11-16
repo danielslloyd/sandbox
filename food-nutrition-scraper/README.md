@@ -40,7 +40,9 @@ scrapers/
 - Python 3.8+
 - Chrome/Chromium browser (for Selenium)
 - ChromeDriver (installed automatically with selenium)
-- Anthropic API key (for nutrition extraction)
+- **For nutrition extraction**, choose ONE of:
+  - **Ollama** (recommended - free, local, private) - Install from https://ollama.ai
+  - **Anthropic API** (cloud-based, requires API key)
 
 ### Setup
 
@@ -51,8 +53,24 @@ scrapers/
 pip install -r requirements.txt
 ```
 
-3. Set up your Anthropic API key:
+3. Set up nutrition extraction backend:
+
+**Option A: Ollama (Recommended - Free & Local)**
 ```bash
+# Install Ollama from https://ollama.ai
+# Then pull a vision model:
+ollama pull llava
+
+# Start Ollama (if not already running)
+ollama serve
+```
+
+**Option B: Anthropic API (Cloud-based)**
+```bash
+# Install anthropic package
+pip install anthropic
+
+# Set API key
 export ANTHROPIC_API_KEY='your-api-key-here'
 ```
 
@@ -65,16 +83,22 @@ ANTHROPIC_API_KEY=your-api-key-here
 
 ### Quick Start
 
-Run the complete pipeline:
+Run the complete pipeline with Ollama (default):
 
 ```bash
 python main_scraper.py
 ```
 
+Or with Anthropic API:
+
+```bash
+python main_scraper.py --backend anthropic
+```
+
 This will:
 1. Scrape food items from Costco
 2. Download product images
-3. Extract nutrition information using AI
+3. Extract nutrition information using AI (Ollama or Anthropic)
 4. Save everything to `data/food_items.json`
 5. Export visualization data to `data/visualization_data.json`
 
@@ -86,19 +110,25 @@ open static/index.html
 ### Command Line Options
 
 ```bash
-# Limit items for testing
-python main_scraper.py --max-items 10
+# LLM Backend options (default: ollama)
+python main_scraper.py --backend ollama                    # Use local Ollama
+python main_scraper.py --backend anthropic                 # Use Anthropic API
 
-# Skip certain steps (useful for re-running parts)
-python main_scraper.py --skip-scrape        # Use existing scraped data
-python main_scraper.py --skip-images        # Skip image download
-python main_scraper.py --skip-nutrition     # Skip AI extraction
+# Ollama-specific options
+python main_scraper.py --ollama-model llava                # Default model
+python main_scraper.py --ollama-model llava-phi3           # Use different model
+python main_scraper.py --ollama-model bakllava             # Another option
+python main_scraper.py --ollama-host http://localhost:11434  # Custom Ollama server
+
+# General options
+python main_scraper.py --max-items 10                      # Limit items for testing
+python main_scraper.py --skip-scrape                       # Use existing scraped data
+python main_scraper.py --skip-images                       # Skip image download
+python main_scraper.py --skip-nutrition                    # Skip AI extraction
+python main_scraper.py --quiet                             # Less verbose logging
 
 # Custom paths
 python main_scraper.py --db-path custom/db.json --image-dir custom/images
-
-# Quiet mode (less verbose)
-python main_scraper.py --quiet
 
 # Specify retailer (currently only 'costco' supported)
 python main_scraper.py --retailer costco
@@ -252,21 +282,39 @@ If you get ChromeDriver errors:
 2. Update selenium: `pip install --upgrade selenium`
 3. ChromeDriver should install automatically with modern selenium
 
-### API Rate Limits
+### Ollama Issues
 
-The Anthropic API has rate limits. If you hit them:
+If Ollama fails to extract nutrition:
+
+1. Make sure Ollama is running: `ollama serve`
+2. Check that your model is installed: `ollama list`
+3. Pull the model if needed: `ollama pull llava`
+4. Try a different model: `--ollama-model llava-phi3` or `--ollama-model bakllava`
+5. Check Ollama logs for errors
+
+**Recommended Ollama models for nutrition extraction:**
+- `llava` - Good all-around vision model (default)
+- `llava-phi3` - Smaller, faster, but may be less accurate
+- `bakllava` - Alternative with good OCR capabilities
+- `llava:13b` - Larger, more accurate, but slower
+
+### Anthropic API Rate Limits
+
+If using Anthropic and hitting rate limits:
 
 - Use `--max-items` to limit the number of items
 - Run in batches
 - The scraper will log errors but continue with other items
+- Consider switching to Ollama for unlimited local processing
 
 ### No Nutrition Data Found
 
 If nutrition extraction fails:
 
 - Check that images are downloading correctly
-- Verify your `ANTHROPIC_API_KEY` is set
 - Some products may not have visible nutrition labels in their images
+- For Ollama: Try a different model with `--ollama-model`
+- For Anthropic: Verify your `ANTHROPIC_API_KEY` is set
 - Try manually adding nutrition facts to the JSON if needed
 
 ### Website Structure Changes
@@ -281,23 +329,39 @@ Retailers frequently update their websites. If scraping fails:
 
 - **Scraping**: ~2-5 seconds per product (depends on page load times)
 - **Image download**: ~1-2 seconds per image
-- **AI extraction**: ~2-3 seconds per image (API call)
-- **Full Costco scrape**: Estimated 2-4 hours for 500+ items
+- **AI extraction (Ollama)**: ~5-15 seconds per image (CPU), ~2-5 seconds (GPU)
+- **AI extraction (Anthropic)**: ~2-3 seconds per image (API call)
+- **Full Costco scrape**:
+  - With Ollama (CPU): 4-8 hours for 500+ items
+  - With Ollama (GPU): 2-4 hours for 500+ items
+  - With Anthropic: 2-3 hours for 500+ items
 
 Tips for faster testing:
 - Use `--max-items 10` for testing
 - Use `--skip-*` flags to skip completed steps
 - Run overnight for full scrapes
+- Use GPU-accelerated Ollama for 3-5x speedup vs CPU
 
 ## Cost Estimates
 
-- **Anthropic API**: ~$0.02-0.05 per product analyzed (depends on image count)
-- **Full Costco scrape**: Estimated $10-25 in API costs for 500 items
+### Ollama (Local) - Recommended
+- **Cost**: $0 - Completely free!
+- **Privacy**: All processing happens on your machine
+- **Requirements**: GPU recommended for faster processing (CPU works but slower)
+- **Full Costco scrape**: Free, takes ~2-6 hours depending on hardware
 
-Save costs by:
-- Testing with `--max-items` first
-- Only running nutrition extraction on products you care about
-- Reusing existing data with `--skip-nutrition`
+### Anthropic API (Cloud)
+- **Cost**: ~$0.02-0.05 per product analyzed (depends on image count)
+- **Full Costco scrape**: Estimated $10-25 in API costs for 500 items
+- **Speed**: Generally faster than Ollama on CPU
+- **Privacy**: Images sent to Anthropic
+
+**Recommendation**: Use Ollama for free, private extraction. Use Anthropic if you need faster processing and don't mind the cost.
+
+Tips to reduce processing time:
+- Use `--max-items` for testing first
+- Use GPU acceleration with Ollama if available
+- Skip re-processing with `--skip-nutrition` when experimenting
 
 ## Future Enhancements
 

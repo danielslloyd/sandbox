@@ -3,8 +3,9 @@ selenium>=4.15.0
 beautifulsoup4>=4.12.0
 requests>=2.31.0
 
-# LLM API
-anthropic>=0.39.0
+# LLM API (optional - only needed if using Anthropic backend)
+# For Ollama: No additional packages needed, just install Ollama locally
+# anthropic>=0.39.0
 
 # Utilities
 Pillow>=10.1.0
