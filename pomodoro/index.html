@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pomodoro Day Planner</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        /* Left Panel - Tasks */
+        .tasks-panel {
+            width: 350px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-header h2 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .settings-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background 0.2s;
+        }
+
+        .settings-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .task-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .task-item {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            cursor: grab;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .task-item:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102,126,234,0.2);
+        }
+
+        .task-item.dragging {
+            opacity: 0.5;
+            cursor: grabbing;
+        }
+
+        .task-info {
+            flex: 1;
+        }
+
+        .task-name {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .task-duration {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .add-task-btn {
+            margin: 0 20px 20px;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .add-task-btn:hover {
+            background: #5568d3;
+        }
+
+        /* Right Panel - Planner */
+        .planner-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .planner-content {
+            flex: 1;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .time-grid {
+            position: relative;
+            padding-left: 80px;
+            padding-right: 20px;
+        }
+
+        .time-slot {
+            height: 60px;
+            border-bottom: 1px solid #e9ecef;
+            position: relative;
+        }
+
+        .time-slot.half {
+            border-bottom: 1px dashed #dee2e6;
+        }
+
+        .time-label {
+            position: absolute;
+            left: 20px;
+            top: -10px;
+            font-size: 14px;
+            color: #6c757d;
+            font-weight: 500;
+            width: 60px;
+        }
+
+        .time-slot-content {
+            position: relative;
+            height: 100%;
+        }
+
+        .current-time-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #e74c3c;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .current-time-line::before {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: -4px;
+            width: 10px;
+            height: 10px;
+            background: #e74c3c;
+            border-radius: 50%;
+        }
+
+        .current-time-label {
+            position: absolute;
+            left: -70px;
+            top: -10px;
+            background: #e74c3c;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Calendar Events */
+        .calendar-event {
+            position: absolute;
+            background: rgba(149, 165, 166, 0.3);
+            border: 1px solid rgba(149, 165, 166, 0.5);
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 12px;
+            color: #2c3e50;
+            pointer-events: none;
+            left: 0;
+            right: 0;
+        }
+
+        .calendar-event-title {
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        /* Planned Tasks */
+        .planned-task {
+            position: absolute;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 13px;
+            cursor: grab;
+            left: 0;
+            right: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+
+        .planned-task:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        }
+
+        .planned-task.dragging {
+            opacity: 0.7;
+            cursor: grabbing;
+        }
+
+        .planned-task.locked {
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+        }
+
+        .planned-task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+
+        .planned-task-name {
+            font-weight: 600;
+        }
+
+        .task-controls {
+            display: flex;
+            gap: 6px;
+        }
+
+        .task-control-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .task-control-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .planned-task-time {
+            font-size: 11px;
+            opacity: 0.9;
+        }
+
+        /* Drop zones */
+        .time-slot.drop-target {
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        /* Settings Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .modal-header h3 {
+            font-size: 24px;
+            color: #2c3e50;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #6c757d;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .close-btn:hover {
+            background: #f8f9fa;
+        }
+
+        .setting-group {
+            margin-bottom: 24px;
+        }
+
+        .setting-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #2c3e50;
+        }
+
+        .setting-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .setting-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .slider {
+            flex: 1;
+        }
+
+        .slider-value {
+            min-width: 40px;
+            text-align: right;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        select.setting-input {
+            cursor: pointer;
+        }
+
+        /* Task Form */
+        .task-form {
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+
+        .task-form input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .task-form input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .task-form-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .task-form-buttons button {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: opacity 0.2s;
+        }
+
+        .task-form-buttons button:hover {
+            opacity: 0.8;
+        }
+
+        .btn-save {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-cancel {
+            background: #e9ecef;
+            color: #6c757d;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e0;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a0aec0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Left Panel: Tasks -->
+        <div class="panel tasks-panel">
+            <div class="panel-header">
+                <h2>📋 Tasks</h2>
+                <button class="settings-btn" id="settingsBtn">⚙️</button>
+            </div>
+            <div class="task-list" id="taskList"></div>
+            <button class="add-task-btn" id="addTaskBtn">+ Add Task</button>
+        </div>
+
+        <!-- Right Panel: Day Planner -->
+        <div class="panel planner-panel">
+            <div class="panel-header">
+                <h2>📅 Day Planner</h2>
+                <div id="currentDate"></div>
+            </div>
+            <div class="planner-content" id="plannerContent">
+                <div class="time-grid" id="timeGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⚙️ Settings</h3>
+                <button class="close-btn" id="closeSettingsBtn">×</button>
+            </div>
+
+            <div class="setting-group">
+                <label class="setting-label">Start Time</label>
+                <input type="time" class="setting-input" id="startTime" value="06:00">
+            </div>
+
+            <div class="setting-group">
+                <label class="setting-label">End Time</label>
+                <input type="time" class="setting-input" id="endTime" value="22:00">
+            </div>
+
+            <div class="setting-group">
+                <label class="checkbox-group">
+                    <input type="checkbox" id="enableReminders">
+                    <span class="setting-label" style="margin: 0;">Enable Hourly Reminders</span>
+                </label>
+            </div>
+
+            <div class="setting-group">
+                <label class="setting-label">Reminder Sound</label>
+                <select class="setting-input" id="reminderSound">
+                    <option value="beep">Beep</option>
+                    <option value="chime">Chime</option>
+                    <option value="bell">Bell</option>
+                    <option value="ping">Ping</option>
+                </select>
+            </div>
+
+            <div class="setting-group">
+                <label class="setting-label">Reminder Volume</label>
+                <div class="slider-group">
+                    <input type="range" class="slider setting-input" id="reminderVolume" min="0" max="100" value="50">
+                    <span class="slider-value" id="volumeValue">50%</span>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <label class="setting-label">Calendar Integration (Google Calendar ID)</label>
+                <input type="text" class="setting-input" id="calendarId" placeholder="your-email@gmail.com">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Audio Context for generating chirp sounds
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Sound generation functions
+        function playChirp(type, volume) {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            gainNode.gain.value = volume / 100;
+
+            switch(type) {
+                case 'beep':
+                    oscillator.frequency.value = 800;
+                    oscillator.type = 'sine';
+                    break;
+                case 'chime':
+                    oscillator.frequency.value = 1000;
+                    oscillator.type = 'sine';
+                    break;
+                case 'bell':
+                    oscillator.frequency.value = 1200;
+                    oscillator.type = 'triangle';
+                    break;
+                case 'ping':
+                    oscillator.frequency.value = 1400;
+                    oscillator.type = 'square';
+                    break;
+            }
+
+            const now = audioContext.currentTime;
+            oscillator.start(now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            oscillator.stop(now + 0.15);
+        }
+
+        // State management
+        const state = {
+            tasks: [
+                { id: 1, name: 'Morning Planning', duration: 30 },
+                { id: 2, name: 'Deep Work Session', duration: 120 },
+                { id: 3, name: 'Team Meeting', duration: 60 },
+                { id: 4, name: 'Lunch Break', duration: 60 },
+                { id: 5, name: 'Email & Admin', duration: 30 }
+            ],
+            plannedTasks: [],
+            calendarEvents: [],
+            settings: {
+                startTime: 6,
+                endTime: 22,
+                enableReminders: false,
+                reminderSound: 'beep',
+                reminderVolume: 50,
+                calendarId: ''
+            },
+            nextTaskId: 6
+        };
+
+        // Load settings from localStorage
+        function loadSettings() {
+            const saved = localStorage.getItem('pomodoroSettings');
+            if (saved) {
+                state.settings = { ...state.settings, ...JSON.parse(saved) };
+                updateSettingsUI();
+            }
+
+            const savedTasks = localStorage.getItem('pomodoroTasks');
+            if (savedTasks) {
+                state.tasks = JSON.parse(savedTasks);
+                state.nextTaskId = Math.max(...state.tasks.map(t => t.id)) + 1;
+            }
+
+            const savedPlanned = localStorage.getItem('pomodoroPlanned');
+            if (savedPlanned) {
+                state.plannedTasks = JSON.parse(savedPlanned);
+            }
+        }
+
+        function saveSettings() {
+            localStorage.setItem('pomodoroSettings', JSON.stringify(state.settings));
+            localStorage.setItem('pomodoroTasks', JSON.stringify(state.tasks));
+            localStorage.setItem('pomodoroPlanned', JSON.stringify(state.plannedTasks));
+        }
+
+        function updateSettingsUI() {
+            document.getElementById('startTime').value = `${String(state.settings.startTime).padStart(2, '0')}:00`;
+            document.getElementById('endTime').value = `${String(state.settings.endTime).padStart(2, '0')}:00`;
+            document.getElementById('enableReminders').checked = state.settings.enableReminders;
+            document.getElementById('reminderSound').value = state.settings.reminderSound;
+            document.getElementById('reminderVolume').value = state.settings.reminderVolume;
+            document.getElementById('volumeValue').textContent = state.settings.reminderVolume + '%';
+            document.getElementById('calendarId').value = state.settings.calendarId;
+        }
+
+        // Time utilities
+        function timeToMinutes(hour, minute = 0) {
+            return hour * 60 + minute;
+        }
+
+        function minutesToTime(minutes) {
+            const hour = Math.floor(minutes / 60);
+            const minute = minutes % 60;
+            return { hour, minute };
+        }
+
+        function formatTime(hour, minute = 0) {
+            const period = hour >= 12 ? 'PM' : 'AM';
+            const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+            return `${displayHour}:${String(minute).padStart(2, '0')} ${period}`;
+        }
+
+        // Render functions
+        function renderTasks() {
+            const taskList = document.getElementById('taskList');
+            const existingForm = taskList.querySelector('.task-form');
+
+            taskList.innerHTML = '';
+
+            if (existingForm) {
+                taskList.appendChild(existingForm);
+            }
+
+            state.tasks.forEach(task => {
+                const taskEl = document.createElement('div');
+                taskEl.className = 'task-item';
+                taskEl.draggable = true;
+                taskEl.dataset.taskId = task.id;
+
+                const hours = Math.floor(task.duration / 60);
+                const minutes = task.duration % 60;
+                const durationText = hours > 0
+                    ? `${hours}h ${minutes > 0 ? minutes + 'm' : ''}`
+                    : `${minutes}m`;
+
+                taskEl.innerHTML = `
+                    <div class="task-info">
+                        <div class="task-name">${task.name}</div>
+                        <div class="task-duration">${durationText}</div>
+                    </div>
+                `;
+
+                // Drag events
+                taskEl.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.effectAllowed = 'copy';
+                    e.dataTransfer.setData('text/plain', JSON.stringify({
+                        type: 'new-task',
+                        taskId: task.id
+                    }));
+                    taskEl.classList.add('dragging');
+                });
+
+                taskEl.addEventListener('dragend', () => {
+                    taskEl.classList.remove('dragging');
+                });
+
+                if (existingForm) {
+                    taskList.insertBefore(taskEl, existingForm);
+                } else {
+                    taskList.appendChild(taskEl);
+                }
+            });
+        }
+
+        function renderPlanner() {
+            const timeGrid = document.getElementById('timeGrid');
+            timeGrid.innerHTML = '';
+
+            const startHour = state.settings.startTime;
+            const endHour = state.settings.endTime;
+
+            for (let hour = startHour; hour <= endHour; hour++) {
+                // Full hour slot
+                const fullSlot = document.createElement('div');
+                fullSlot.className = 'time-slot';
+                fullSlot.dataset.time = timeToMinutes(hour, 0);
+
+                const label = document.createElement('div');
+                label.className = 'time-label';
+                label.textContent = formatTime(hour);
+                fullSlot.appendChild(label);
+
+                const content = document.createElement('div');
+                content.className = 'time-slot-content';
+                fullSlot.appendChild(content);
+
+                setupDropZone(fullSlot);
+                timeGrid.appendChild(fullSlot);
+
+                // Half hour slot (except for the last hour)
+                if (hour < endHour) {
+                    const halfSlot = document.createElement('div');
+                    halfSlot.className = 'time-slot half';
+                    halfSlot.dataset.time = timeToMinutes(hour, 30);
+
+                    const halfContent = document.createElement('div');
+                    halfContent.className = 'time-slot-content';
+                    halfSlot.appendChild(halfContent);
+
+                    setupDropZone(halfSlot);
+                    timeGrid.appendChild(halfSlot);
+                }
+            }
+
+            renderCalendarEvents();
+            renderPlannedTasks();
+            updateCurrentTimeLine();
+        }
+
+        function renderCalendarEvents() {
+            // Placeholder for calendar events
+            // In a real implementation, this would fetch from Google Calendar API
+            const timeGrid = document.getElementById('timeGrid');
+
+            state.calendarEvents.forEach(event => {
+                const eventEl = document.createElement('div');
+                eventEl.className = 'calendar-event';
+                eventEl.innerHTML = `
+                    <div class="calendar-event-title">${event.title}</div>
+                    <div>${formatTime(event.startHour, event.startMinute)} - ${formatTime(event.endHour, event.endMinute)}</div>
+                `;
+
+                const startMinutes = timeToMinutes(event.startHour, event.startMinute);
+                const topPosition = calculateTopPosition(startMinutes);
+                const height = event.duration * 1; // 1px per minute (60px per hour)
+
+                eventEl.style.top = topPosition + 'px';
+                eventEl.style.height = height + 'px';
+
+                const firstSlot = timeGrid.querySelector('.time-slot-content');
+                if (firstSlot) {
+                    firstSlot.appendChild(eventEl);
+                }
+            });
+        }
+
+        function renderPlannedTasks() {
+            const timeGrid = document.getElementById('timeGrid');
+
+            // Remove existing planned tasks
+            timeGrid.querySelectorAll('.planned-task').forEach(el => el.remove());
+
+            state.plannedTasks.forEach(planned => {
+                const task = state.tasks.find(t => t.id === planned.taskId);
+                if (!task) return;
+
+                const taskEl = document.createElement('div');
+                taskEl.className = 'planned-task' + (planned.locked ? ' locked' : '');
+                taskEl.draggable = true;
+                taskEl.dataset.plannedId = planned.id;
+
+                const { hour: startHour, minute: startMinute } = minutesToTime(planned.startTime);
+                const { hour: endHour, minute: endMinute } = minutesToTime(planned.startTime + task.duration);
+
+                taskEl.innerHTML = `
+                    <div class="planned-task-header">
+                        <div class="planned-task-name">${task.name}</div>
+                        <div class="task-controls">
+                            <button class="task-control-btn lock-btn" title="${planned.locked ? 'Unlock' : 'Lock'}">
+                                ${planned.locked ? '🔒' : '🔓'}
+                            </button>
+                            <button class="task-control-btn remove-btn" title="Remove">×</button>
+                        </div>
+                    </div>
+                    <div class="planned-task-time">
+                        ${formatTime(startHour, startMinute)} - ${formatTime(endHour, endMinute)}
+                    </div>
+                `;
+
+                const topPosition = calculateTopPosition(planned.startTime);
+                const height = task.duration * 1; // 1px per minute
+
+                taskEl.style.top = topPosition + 'px';
+                taskEl.style.height = height + 'px';
+
+                // Event listeners
+                taskEl.querySelector('.lock-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    planned.locked = !planned.locked;
+                    saveSettings();
+                    renderPlanner();
+                });
+
+                taskEl.querySelector('.remove-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    state.plannedTasks = state.plannedTasks.filter(p => p.id !== planned.id);
+                    saveSettings();
+                    renderPlanner();
+                });
+
+                taskEl.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', JSON.stringify({
+                        type: 'planned-task',
+                        plannedId: planned.id
+                    }));
+                    taskEl.classList.add('dragging');
+                });
+
+                taskEl.addEventListener('dragend', () => {
+                    taskEl.classList.remove('dragging');
+                });
+
+                const firstSlot = timeGrid.querySelector('.time-slot-content');
+                if (firstSlot) {
+                    firstSlot.appendChild(taskEl);
+                }
+            });
+        }
+
+        function calculateTopPosition(minutes) {
+            const startMinutes = timeToMinutes(state.settings.startTime, 0);
+            const relativeMinutes = minutes - startMinutes;
+            return relativeMinutes * 1; // 1px per minute (60px per hour)
+        }
+
+        function updateCurrentTimeLine() {
+            const timeGrid = document.getElementById('timeGrid');
+            const existingLine = timeGrid.querySelector('.current-time-line');
+            if (existingLine) {
+                existingLine.remove();
+            }
+
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+            const currentMinutes = timeToMinutes(currentHour, currentMinute);
+
+            const startMinutes = timeToMinutes(state.settings.startTime, 0);
+            const endMinutes = timeToMinutes(state.settings.endTime, 0);
+
+            if (currentMinutes >= startMinutes && currentMinutes <= endMinutes) {
+                const line = document.createElement('div');
+                line.className = 'current-time-line';
+
+                const label = document.createElement('div');
+                label.className = 'current-time-label';
+                label.textContent = formatTime(currentHour, currentMinute);
+                line.appendChild(label);
+
+                const topPosition = calculateTopPosition(currentMinutes);
+                line.style.top = topPosition + 'px';
+
+                const firstSlot = timeGrid.querySelector('.time-slot-content');
+                if (firstSlot) {
+                    firstSlot.appendChild(line);
+                }
+            }
+        }
+
+        // Drag and drop
+        function setupDropZone(slotEl) {
+            slotEl.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                slotEl.classList.add('drop-target');
+            });
+
+            slotEl.addEventListener('dragleave', () => {
+                slotEl.classList.remove('drop-target');
+            });
+
+            slotEl.addEventListener('drop', (e) => {
+                e.preventDefault();
+                slotEl.classList.remove('drop-target');
+
+                const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+                const targetTime = parseInt(slotEl.dataset.time);
+
+                if (data.type === 'new-task') {
+                    addPlannedTask(data.taskId, targetTime);
+                } else if (data.type === 'planned-task') {
+                    movePlannedTask(data.plannedId, targetTime);
+                }
+            });
+        }
+
+        function addPlannedTask(taskId, startTime) {
+            const task = state.tasks.find(t => t.id === taskId);
+            if (!task) return;
+
+            // Adjust for conflicts with unlocked tasks
+            const adjustedStartTime = findAvailableSlot(startTime, task.duration);
+
+            const planned = {
+                id: Date.now(),
+                taskId: taskId,
+                startTime: adjustedStartTime,
+                locked: false
+            };
+
+            state.plannedTasks.push(planned);
+            saveSettings();
+            renderPlanner();
+        }
+
+        function movePlannedTask(plannedId, targetTime) {
+            const planned = state.plannedTasks.find(p => p.id === plannedId);
+            if (!planned || planned.locked) return;
+
+            const task = state.tasks.find(t => t.id === planned.taskId);
+            if (!task) return;
+
+            // Remove this task temporarily
+            const tempTasks = state.plannedTasks.filter(p => p.id !== plannedId);
+
+            // Find available slot considering other tasks
+            const adjustedStartTime = findAvailableSlot(targetTime, task.duration, tempTasks);
+
+            planned.startTime = adjustedStartTime;
+            saveSettings();
+            renderPlanner();
+        }
+
+        function findAvailableSlot(requestedTime, duration, plannedTasks = state.plannedTasks) {
+            // Round to nearest 30-minute increment
+            const roundedTime = Math.round(requestedTime / 30) * 30;
+
+            // Check if this slot conflicts with any locked tasks or calendar events
+            const conflicts = plannedTasks.filter(p => {
+                if (!p.locked) return false;
+
+                const task = state.tasks.find(t => t.id === p.taskId);
+                if (!task) return false;
+
+                const pEnd = p.startTime + task.duration;
+                const reqEnd = roundedTime + duration;
+
+                return !(reqEnd <= p.startTime || roundedTime >= pEnd);
+            });
+
+            if (conflicts.length === 0) {
+                // Also shift unlocked tasks if needed
+                shiftUnlockedTasks(roundedTime, duration, plannedTasks);
+                return roundedTime;
+            }
+
+            // Find next available slot
+            let testTime = roundedTime + 30;
+            const maxTime = timeToMinutes(state.settings.endTime, 0);
+
+            while (testTime + duration <= maxTime) {
+                const hasConflict = plannedTasks.some(p => {
+                    if (!p.locked) return false;
+                    const task = state.tasks.find(t => t.id === p.taskId);
+                    if (!task) return false;
+                    const pEnd = p.startTime + task.duration;
+                    const reqEnd = testTime + duration;
+                    return !(reqEnd <= p.startTime || testTime >= pEnd);
+                });
+
+                if (!hasConflict) {
+                    shiftUnlockedTasks(testTime, duration, plannedTasks);
+                    return testTime;
+                }
+
+                testTime += 30;
+            }
+
+            return roundedTime;
+        }
+
+        function shiftUnlockedTasks(insertTime, insertDuration, plannedTasks = state.plannedTasks) {
+            const insertEnd = insertTime + insertDuration;
+
+            // Find unlocked tasks that conflict
+            const conflictingTasks = plannedTasks
+                .map(p => {
+                    const task = state.tasks.find(t => t.id === p.taskId);
+                    if (!task || p.locked) return null;
+
+                    const pEnd = p.startTime + task.duration;
+                    const conflicts = !(insertEnd <= p.startTime || insertTime >= pEnd);
+
+                    return conflicts ? { planned: p, task, end: pEnd } : null;
+                })
+                .filter(x => x !== null)
+                .sort((a, b) => a.planned.startTime - b.planned.startTime);
+
+            if (conflictingTasks.length === 0) return;
+
+            // Shift tasks down
+            let currentEnd = insertEnd;
+            conflictingTasks.forEach(({ planned, task }) => {
+                if (planned.startTime < currentEnd) {
+                    planned.startTime = currentEnd;
+                    currentEnd = planned.startTime + task.duration;
+                }
+            });
+        }
+
+        // Add task functionality
+        document.getElementById('addTaskBtn').addEventListener('click', () => {
+            const taskList = document.getElementById('taskList');
+
+            // Remove existing form if any
+            const existingForm = taskList.querySelector('.task-form');
+            if (existingForm) {
+                existingForm.remove();
+                return;
+            }
+
+            const form = document.createElement('div');
+            form.className = 'task-form';
+            form.innerHTML = `
+                <input type="text" id="newTaskName" placeholder="Task name" autofocus>
+                <input type="number" id="newTaskDuration" placeholder="Duration (minutes)" min="30" step="30" value="30">
+                <div class="task-form-buttons">
+                    <button class="btn-save">Save</button>
+                    <button class="btn-cancel">Cancel</button>
+                </div>
+            `;
+
+            taskList.insertBefore(form, taskList.firstChild);
+
+            form.querySelector('.btn-save').addEventListener('click', () => {
+                const name = form.querySelector('#newTaskName').value.trim();
+                const duration = parseInt(form.querySelector('#newTaskDuration').value) || 30;
+
+                if (name) {
+                    state.tasks.push({
+                        id: state.nextTaskId++,
+                        name,
+                        duration
+                    });
+                    saveSettings();
+                    renderTasks();
+                }
+            });
+
+            form.querySelector('.btn-cancel').addEventListener('click', () => {
+                form.remove();
+            });
+
+            form.querySelector('#newTaskName').focus();
+        });
+
+        // Settings modal
+        document.getElementById('settingsBtn').addEventListener('click', () => {
+            document.getElementById('settingsModal').classList.add('active');
+        });
+
+        document.getElementById('closeSettingsBtn').addEventListener('click', () => {
+            document.getElementById('settingsModal').classList.remove('active');
+        });
+
+        document.getElementById('settingsModal').addEventListener('click', (e) => {
+            if (e.target.id === 'settingsModal') {
+                document.getElementById('settingsModal').classList.remove('active');
+            }
+        });
+
+        // Settings handlers
+        document.getElementById('startTime').addEventListener('change', (e) => {
+            state.settings.startTime = parseInt(e.target.value.split(':')[0]);
+            saveSettings();
+            renderPlanner();
+        });
+
+        document.getElementById('endTime').addEventListener('change', (e) => {
+            state.settings.endTime = parseInt(e.target.value.split(':')[0]);
+            saveSettings();
+            renderPlanner();
+        });
+
+        document.getElementById('enableReminders').addEventListener('change', (e) => {
+            state.settings.enableReminders = e.target.checked;
+            saveSettings();
+        });
+
+        document.getElementById('reminderSound').addEventListener('change', (e) => {
+            state.settings.reminderSound = e.target.value;
+            saveSettings();
+            // Test sound
+            playChirp(e.target.value, state.settings.reminderVolume);
+        });
+
+        document.getElementById('reminderVolume').addEventListener('input', (e) => {
+            state.settings.reminderVolume = parseInt(e.target.value);
+            document.getElementById('volumeValue').textContent = e.target.value + '%';
+            saveSettings();
+        });
+
+        document.getElementById('calendarId').addEventListener('change', (e) => {
+            state.settings.calendarId = e.target.value;
+            saveSettings();
+            // In a real implementation, fetch calendar events here
+        });
+
+        // Update current date
+        function updateCurrentDate() {
+            const now = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('currentDate').textContent = now.toLocaleDateString('en-US', options);
+        }
+
+        // Reminder system
+        let lastReminderMinute = -1;
+
+        function checkReminders() {
+            if (!state.settings.enableReminders) return;
+
+            const now = new Date();
+            const currentMinute = now.getMinutes();
+
+            // Check if we're at the top (0) or bottom (30) of the hour
+            if ((currentMinute === 0 || currentMinute === 30) && currentMinute !== lastReminderMinute) {
+                playChirp(state.settings.reminderSound, state.settings.reminderVolume);
+                lastReminderMinute = currentMinute;
+            }
+
+            // Reset after passing the minute
+            if (currentMinute !== 0 && currentMinute !== 30) {
+                lastReminderMinute = -1;
+            }
+        }
+
+        // Initialize
+        loadSettings();
+        renderTasks();
+        renderPlanner();
+        updateCurrentDate();
+
+        // Update every second
+        setInterval(() => {
+            updateCurrentTimeLine();
+            checkReminders();
+        }, 1000);
+
+        // Update date at midnight
+        setInterval(updateCurrentDate, 60000);
+    </script>
+</body>
+</html>
