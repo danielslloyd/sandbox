@@ -6,7 +6,7 @@ Scrapes food items from costco.com.
 from typing import List, Dict, Optional
 import time
 import re
-from selenium import webdriver
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -32,18 +32,27 @@ class CostcoScraper(BaseFoodScraper):
         self.base_url = "https://www.costco.com"
 
     def _init_driver(self):
-        """Initialize Selenium WebDriver"""
+        """Initialize Selenium WebDriver with undetected-chromedriver"""
         if self.driver is None:
-            self.logger.info("Initializing Chrome WebDriver...")
-            options = webdriver.ChromeOptions()
+            self.logger.info("Initializing undetected Chrome WebDriver...")
+
+            options = uc.ChromeOptions()
+
+            # Headless mode (if requested)
             if self.headless:
-                options.add_argument('--headless')
+                options.add_argument('--headless=new')
+
+            # Basic Chrome options
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-gpu')
-            options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
-            self.driver = webdriver.Chrome(options=options)
+            # Set window size
+            options.add_argument('--window-size=1920,1080')
+
+            # Use undetected_chromedriver - it handles most anti-bot measures automatically
+            self.driver = uc.Chrome(options=options, version_main=None)
+            self.driver.set_page_load_timeout(30)  # 30 second timeout for page loads
+
             self.logger.info("WebDriver initialized successfully")
 
     def _close_driver(self):
@@ -66,12 +75,12 @@ class CostcoScraper(BaseFoodScraper):
         # Major food categories at Costco
         # These are common food department URLs
         categories = [
-            f"{self.base_url}/grocery-household.html",
-            f"{self.base_url}/meat-seafood-deli.html",
-            f"{self.base_url}/fresh-foods.html",
-            f"{self.base_url}/frozen-foods.html",
-            f"{self.base_url}/organic-foods.html",
-            f"{self.base_url}/bakery-desserts.html",
+        #    f"{self.base_url}/grocery-household.html",
+        #    f"{self.base_url}/meat.html",
+            f"{self.base_url}/dairy-eggs-cheese.html",
+        #    f"{self.base_url}/frozen-foods.html",
+        #    f"{self.base_url}/organic-foods.html",
+        #    f"{self.base_url}/bakery-desserts.html",
         ]
 
         return categories
@@ -90,8 +99,13 @@ class CostcoScraper(BaseFoodScraper):
         product_urls = []
 
         try:
-            self.driver.get(category_url)
-            time.sleep(3)  # Wait for page to load
+            self.logger.info(f"Loading page: {category_url}")
+            try:
+                self.driver.get(category_url)
+            except TimeoutException:
+                self.logger.warning("Page load timeout - continuing anyway")
+
+            time.sleep(5)  # Wait for page to load and JavaScript to execute
 
             # Scroll to load more items (lazy loading)
             last_height = self.driver.execute_script("return document.body.scrollHeight")
@@ -111,9 +125,22 @@ class CostcoScraper(BaseFoodScraper):
             # Parse the page
             soup = BeautifulSoup(self.driver.page_source, 'html.parser')
 
+            # DEBUG: Save page source to inspect
+            with open('debug_page_source.html', 'w', encoding='utf-8') as f:
+                f.write(self.driver.page_source)
+            self.logger.info("Saved page source to debug_page_source.html")
+
+            # DEBUG: Print all links to see what patterns exist
+            all_links = soup.find_all('a', href=True)
+            self.logger.info(f"Total links found: {len(all_links)}")
+
+            # Show first 10 links as sample
+            for i, link in enumerate(all_links[:10]):
+                self.logger.info(f"Sample link {i+1}: {link.get('href')}")
+
             # Find product links (adjust selectors based on actual Costco HTML structure)
-            # Common patterns: product tiles, product cards, etc.
-            product_links = soup.find_all('a', href=re.compile(r'/.*\.product\.\d+\.html'))
+            # Costco uses pattern: /product-name.product.PRODUCTID.html
+            product_links = soup.find_all('a', href=re.compile(r'\.product\.\d+\.html'))
 
             for link in product_links:
                 href = link.get('href', '')

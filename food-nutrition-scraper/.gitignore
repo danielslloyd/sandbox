@@ -46,3 +46,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Debug files
+debug_page_source.html

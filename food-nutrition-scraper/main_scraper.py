@@ -71,7 +71,7 @@ def main():
         print("=" * 80)
 
         if args.retailer.lower() == 'costco':
-            scraper = CostcoScraper(verbose=verbose, headless=True)
+            scraper = CostcoScraper(verbose=verbose, headless=False)  # Temporarily non-headless for debugging
         else:
             print(f"Error: Retailer '{args.retailer}' not supported yet")
             print("Currently supported: costco")
