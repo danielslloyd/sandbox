@@ -385,11 +385,13 @@
             draw() {
                 const color = this.type === 'positive' ? '#f44' : '#44f';
                 const sign = this.type === 'positive' ? '+' : '-';
+                const glowColor = this.type === 'positive' ? 'rgba(255, 136, 136, 0.5)' : 'rgba(136, 136, 255, 0.5)';
+                const fadeColor = this.type === 'positive' ? 'rgba(255, 68, 68, 0)' : 'rgba(68, 68, 255, 0)';
 
                 // Outer glow
                 const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, NODE_RADIUS * 1.5);
-                gradient.addColorStop(0, color.replace('4', '8') + '80');
-                gradient.addColorStop(1, color + '00');
+                gradient.addColorStop(0, glowColor);
+                gradient.addColorStop(1, fadeColor);
                 ctx.fillStyle = gradient;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, NODE_RADIUS * 1.5, 0, Math.PI * 2);
