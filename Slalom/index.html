@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Charged Particle Slalom</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #fff;
+        }
+
+        #gameContainer {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        #gameCanvas {
+            border: 2px solid #fff;
+            border-radius: 8px;
+            background: #0a0a1a;
+            cursor: crosshair;
+            display: block;
+        }
+
+        #controls {
+            margin-top: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        #stats {
+            display: flex;
+            gap: 20px;
+            font-size: 14px;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 15px;
+            border-radius: 5px;
+        }
+
+        .stat strong {
+            color: #4af;
+        }
+
+        #nodeType {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .node-btn {
+            padding: 10px 20px;
+            border: 2px solid #fff;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .node-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .node-btn.active {
+            background: rgba(255, 255, 255, 0.4);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        .node-btn.positive {
+            color: #f44;
+        }
+
+        .node-btn.negative {
+            color: #44f;
+        }
+
+        #resetBtn {
+            padding: 10px 20px;
+            background: #f44;
+            border: none;
+            border-radius: 5px;
+            color: #fff;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        #resetBtn:hover {
+            background: #f66;
+            transform: scale(1.05);
+        }
+
+        #winMessage {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px 60px;
+            border-radius: 15px;
+            text-align: center;
+            border: 3px solid #4af;
+            z-index: 1000;
+        }
+
+        #winMessage h1 {
+            color: #4af;
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px #4af;
+        }
+
+        #instructions {
+            margin-top: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        #instructions h3 {
+            margin-bottom: 10px;
+            color: #4af;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="controls">
+            <div id="stats">
+                <div class="stat">Gates: <strong id="gatesPassed">0</strong>/<strong id="totalGates">6</strong></div>
+                <div class="stat">Score: <strong id="score">0</strong>/100</div>
+                <div class="stat">Nodes: <strong id="nodeCount">0</strong></div>
+            </div>
+            <div id="nodeType">
+                <span>Place Node:</span>
+                <button class="node-btn positive active" id="posBtn">+ Positive</button>
+                <button class="node-btn negative" id="negBtn">- Negative</button>
+            </div>
+            <button id="resetBtn">Reset Game</button>
+        </div>
+        <div id="instructions">
+            <h3>How to Play:</h3>
+            <p>
+                <strong>Goal:</strong> Guide 100 charged particles through all gates in order (red → yellow → green).<br>
+                <strong>Controls:</strong> Click to place positive (+) or negative (-) charged nodes. Right-click to remove nodes.<br>
+                <strong>Physics:</strong> Positive nodes repel particles, negative nodes attract them. Use these forces to steer the particle stream!
+            </p>
+        </div>
+    </div>
+
+    <div id="winMessage">
+        <h1>🎉 You Win! 🎉</h1>
+        <p>All 100 particles made it through the slalom!</p>
+        <button id="playAgainBtn" style="margin-top: 20px; padding: 15px 30px; background: #4af; border: none; border-radius: 5px; color: #000; cursor: pointer; font-weight: bold; font-size: 16px;">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game state
+        let particles = [];
+        let gates = [];
+        let nodes = [];
+        let score = 0;
+        let particleTimer = 0;
+        let gameWon = false;
+        let selectedNodeType = 'positive'; // 'positive' or 'negative'
+
+        // Constants
+        const PARTICLE_EMIT_RATE = 10; // particles per second
+        const EMIT_INTERVAL = 1000 / PARTICLE_EMIT_RATE;
+        const PARTICLE_RADIUS = 3;
+        const NODE_RADIUS = 15;
+        const GATE_WIDTH = 100;
+        const GATE_POST_RADIUS = 8;
+        const FORCE_STRENGTH = 5000; // Force constant for charged nodes
+        const MAX_FORCE = 5; // Maximum force per node
+
+        // Particle class
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                // Small random variations in speed and bearing
+                const angle = (Math.random() - 0.5) * 0.2; // ±0.1 radians
+                const speed = 1.5 + (Math.random() - 0.5) * 0.3;
+                this.vx = Math.sin(angle) * speed;
+                this.vy = speed;
+                this.alive = true;
+                this.currentGate = 0; // Which gate they need to pass through next
+                this.trail = [];
+            }
+
+            update(dt) {
+                if (!this.alive) return;
+
+                // Apply forces from charged nodes
+                let fx = 0;
+                let fy = 0;
+
+                for (let node of nodes) {
+                    const dx = this.x - node.x;
+                    const dy = this.y - node.y;
+                    const distSq = dx * dx + dy * dy;
+                    const dist = Math.sqrt(distSq);
+
+                    if (dist > 1) {
+                        // Coulomb's law-like force (inverse square)
+                        let forceMag = FORCE_STRENGTH / distSq;
+                        forceMag = Math.min(forceMag, MAX_FORCE); // Cap the force
+
+                        // Positive nodes repel, negative nodes attract
+                        const sign = node.type === 'positive' ? 1 : -1;
+                        fx += sign * (dx / dist) * forceMag;
+                        fy += sign * (dy / dist) * forceMag;
+                    }
+                }
+
+                // Update velocity
+                this.vx += fx * dt;
+                this.vy += fy * dt;
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Add to trail
+                this.trail.push({x: this.x, y: this.y});
+                if (this.trail.length > 10) {
+                    this.trail.shift();
+                }
+
+                // Check if out of bounds
+                if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+                    this.alive = false;
+                }
+
+                // Check gate collisions
+                this.checkGateCollision();
+            }
+
+            checkGateCollision() {
+                if (this.currentGate >= gates.length) return;
+
+                const gate = gates[this.currentGate];
+                const prevY = this.y - this.vy;
+
+                // Check if particle crossed the gate's Y level
+                if (prevY <= gate.y && this.y > gate.y) {
+                    // Check if within gate bounds
+                    if (this.x >= gate.x - GATE_WIDTH / 2 && this.x <= gate.x + GATE_WIDTH / 2) {
+                        this.currentGate++;
+
+                        // If passed all gates, increment score
+                        if (this.currentGate >= gates.length) {
+                            score++;
+                            this.alive = false;
+                            updateStats();
+                            checkWin();
+                        }
+                    } else {
+                        // Missed the gate, particle fails
+                        this.alive = false;
+                    }
+                }
+            }
+
+            draw() {
+                if (!this.alive) return;
+
+                // Draw trail
+                ctx.strokeStyle = 'rgba(100, 200, 255, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i < this.trail.length; i++) {
+                    const point = this.trail[i];
+                    if (i === 0) {
+                        ctx.moveTo(point.x, point.y);
+                    } else {
+                        ctx.lineTo(point.x, point.y);
+                    }
+                }
+                ctx.stroke();
+
+                // Draw particle
+                ctx.fillStyle = '#6cf';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, PARTICLE_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Glow effect
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, PARTICLE_RADIUS * 2);
+                gradient.addColorStop(0, 'rgba(100, 200, 255, 0.8)');
+                gradient.addColorStop(1, 'rgba(100, 200, 255, 0)');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, PARTICLE_RADIUS * 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Gate class
+        class Gate {
+            constructor(x, y, index) {
+                this.x = x;
+                this.y = y;
+                this.index = index;
+            }
+
+            draw() {
+                // Determine gate color based on progress
+                let color = '#888';
+                const highestGate = Math.max(...particles.filter(p => p.alive).map(p => p.currentGate), 0);
+
+                if (this.index < highestGate) {
+                    color = '#4f4'; // Passed
+                } else if (this.index === highestGate) {
+                    color = '#ff4'; // Current
+                } else {
+                    color = '#f44'; // Upcoming
+                }
+
+                // Left post
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(this.x - GATE_WIDTH / 2, this.y, GATE_POST_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Right post
+                ctx.beginPath();
+                ctx.arc(this.x + GATE_WIDTH / 2, this.y, GATE_POST_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Connection line
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(this.x - GATE_WIDTH / 2, this.y);
+                ctx.lineTo(this.x + GATE_WIDTH / 2, this.y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Gate number
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(this.index + 1, this.x, this.y - 20);
+            }
+        }
+
+        // Node class
+        class Node {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type; // 'positive' or 'negative'
+            }
+
+            draw() {
+                const color = this.type === 'positive' ? '#f44' : '#44f';
+                const sign = this.type === 'positive' ? '+' : '-';
+
+                // Outer glow
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, NODE_RADIUS * 1.5);
+                gradient.addColorStop(0, color.replace('4', '8') + '80');
+                gradient.addColorStop(1, color + '00');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, NODE_RADIUS * 1.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Main circle
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, NODE_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Border
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Sign
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 24px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(sign, this.x, this.y);
+            }
+
+            contains(x, y) {
+                const dx = x - this.x;
+                const dy = y - this.y;
+                return dx * dx + dy * dy <= NODE_RADIUS * NODE_RADIUS;
+            }
+        }
+
+        // Initialize game
+        function initGame() {
+            particles = [];
+            gates = [];
+            nodes = [];
+            score = 0;
+            particleTimer = 0;
+            gameWon = false;
+
+            // Generate gates
+            const numGates = 6;
+            const gateSpacing = (canvas.height - 100) / (numGates + 1);
+
+            for (let i = 0; i < numGates; i++) {
+                const y = gateSpacing * (i + 1) + 50;
+                // Alternate gate positions to create a slalom
+                const offsetX = (i % 2 === 0) ? -100 : 100;
+                const x = canvas.width / 2 + offsetX;
+                gates.push(new Gate(x, y, i));
+            }
+
+            document.getElementById('totalGates').textContent = numGates;
+            updateStats();
+            document.getElementById('winMessage').style.display = 'none';
+        }
+
+        // Update stats display
+        function updateStats() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('nodeCount').textContent = nodes.length;
+
+            // Calculate gates passed (highest gate reached)
+            const maxGate = Math.max(...particles.filter(p => p.alive).map(p => p.currentGate), 0);
+            document.getElementById('gatesPassed').textContent = Math.min(maxGate, gates.length);
+        }
+
+        // Check win condition
+        function checkWin() {
+            if (score >= 100 && !gameWon) {
+                gameWon = true;
+                document.getElementById('winMessage').style.display = 'block';
+            }
+        }
+
+        // Game loop
+        let lastTime = 0;
+        function gameLoop(timestamp) {
+            const dt = timestamp - lastTime;
+            lastTime = timestamp;
+
+            // Clear canvas
+            ctx.fillStyle = '#0a0a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Emit particles
+            if (!gameWon && score < 100) {
+                particleTimer += dt;
+                if (particleTimer >= EMIT_INTERVAL) {
+                    particles.push(new Particle(canvas.width / 2, 10));
+                    particleTimer = 0;
+                }
+            }
+
+            // Update and draw gates
+            for (let gate of gates) {
+                gate.draw();
+            }
+
+            // Update and draw particles
+            for (let particle of particles) {
+                particle.update(dt / 1000); // Convert to seconds
+                particle.draw();
+            }
+
+            // Remove dead particles
+            particles = particles.filter(p => p.alive);
+
+            // Draw nodes
+            for (let node of nodes) {
+                node.draw();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Mouse handling
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // Check if clicking on existing node to remove
+            const clickedNode = nodes.findIndex(node => node.contains(x, y));
+            if (clickedNode !== -1) {
+                nodes.splice(clickedNode, 1);
+            } else {
+                // Add new node
+                nodes.push(new Node(x, y, selectedNodeType));
+            }
+            updateStats();
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // Remove node on right-click
+            const clickedNode = nodes.findIndex(node => node.contains(x, y));
+            if (clickedNode !== -1) {
+                nodes.splice(clickedNode, 1);
+                updateStats();
+            }
+        });
+
+        // Button handlers
+        document.getElementById('posBtn').addEventListener('click', () => {
+            selectedNodeType = 'positive';
+            document.getElementById('posBtn').classList.add('active');
+            document.getElementById('negBtn').classList.remove('active');
+        });
+
+        document.getElementById('negBtn').addEventListener('click', () => {
+            selectedNodeType = 'negative';
+            document.getElementById('negBtn').classList.add('active');
+            document.getElementById('posBtn').classList.remove('active');
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            initGame();
+        });
+
+        document.getElementById('playAgainBtn').addEventListener('click', () => {
+            initGame();
+        });
+
+        // Start game
+        initGame();
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
