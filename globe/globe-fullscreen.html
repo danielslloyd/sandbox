@@ -92,125 +92,128 @@
     <script src="https://d3js.org/topojson.v1.min.js"></script>
 
     <script>
-        // Get dimensions
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        const radius = Math.min(width, height) * 0.45;
+        // Wait for all libraries to load
+        window.addEventListener('load', function() {
+            // Get dimensions
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const radius = Math.min(width, height) * 0.45;
 
-        // Create projection with γ (gamma) locked to 0
-        const projection = d3.geo.orthographic()
-            .scale(radius)
-            .translate([width / 2, height / 2])
-            .clipAngle(90)
-            .rotate([0, 0, 0]); // [λ, φ, γ] - we'll keep γ at 0
+            // Create projection with γ (gamma) locked to 0
+            const projection = d3.geo.orthographic()
+                .scale(radius)
+                .translate([width / 2, height / 2])
+                .clipAngle(90)
+                .rotate([0, 0, 0]); // [λ, φ, γ] - we'll keep γ at 0
 
-        const path = d3.geo.path()
-            .projection(projection);
+            const path = d3.geo.path()
+                .projection(projection);
 
-        const graticule = d3.geo.graticule();
+            const graticule = d3.geo.graticule();
 
-        // Create SVG
-        const svg = d3.select("#globe-container").append("svg")
-            .attr("width", width)
-            .attr("height", height);
+            // Create SVG
+            const svg = d3.select("#globe-container").append("svg")
+                .attr("width", width)
+                .attr("height", height);
 
-        // Add globe sphere background
-        svg.append("path")
-            .datum({type: "Sphere"})
-            .attr("class", "globe-sphere")
-            .attr("d", path);
-
-        // Add graticule
-        svg.append("path")
-            .datum(graticule)
-            .attr("class", "graticule")
-            .attr("d", path);
-
-        // Groups for land and boundaries
-        const landGroup = svg.append("g").attr("class", "land-group");
-        const boundaryGroup = svg.append("g").attr("class", "boundary-group");
-
-        // Foreground sphere for mouse interaction
-        const foreground = svg.append("path")
-            .datum({type: "Sphere"})
-            .attr("class", "foreground")
-            .attr("d", path);
-
-        // Load world data
-        d3.json("https://cdn.jsdelivr.net/npm/world-atlas@1/world/110m.json", function(error, world) {
-            if (error) {
-                console.error("Error loading world data:", error);
-                return;
-            }
-
-            const countries = topojson.feature(world, world.objects.countries);
-            const borders = topojson.mesh(world, world.objects.countries, function(a, b) { return a !== b; });
-
-            // Draw land
-            landGroup.selectAll(".land")
-                .data(countries.features)
-                .enter().append("path")
-                .attr("class", "land")
+            // Add globe sphere background
+            svg.append("path")
+                .datum({type: "Sphere"})
+                .attr("class", "globe-sphere")
                 .attr("d", path);
 
-            // Draw boundaries
-            boundaryGroup.append("path")
-                .datum(borders)
-                .attr("class", "boundary")
+            // Add graticule
+            svg.append("path")
+                .datum(graticule)
+                .attr("class", "graticule")
                 .attr("d", path);
-        });
 
-        // Rotation with γ component locked to 0
-        let λ = 0, φ = 0; // Only use λ (lambda) and φ (phi), γ (gamma) stays at 0
-        const rotationDisplay = d3.select("#rotation-display");
+            // Groups for land and boundaries
+            const landGroup = svg.append("g").attr("class", "land-group");
+            const boundaryGroup = svg.append("g").attr("class", "boundary-group");
 
-        function updateRotationDisplay() {
-            rotationDisplay.html(`λ: ${λ.toFixed(1)}°, φ: ${φ.toFixed(1)}°, γ: 0.0° (locked)`);
-        }
+            // Foreground sphere for mouse interaction
+            const foreground = svg.append("path")
+                .datum({type: "Sphere"})
+                .attr("class", "foreground")
+                .attr("d", path);
 
-        // Drag behavior with γ locked to 0
-        const drag = d3.behavior.drag()
-            .origin(function() {
-                const r = projection.rotate();
-                return {x: r[0], y: -r[1]};
-            })
-            .on("drag", function() {
-                // Calculate new rotation - only update λ and φ, keep γ at 0
-                λ = d3.event.x;
-                φ = -d3.event.y;
+            // Load world data
+            d3.json("https://cdn.jsdelivr.net/npm/world-atlas@1/world/110m.json", function(error, world) {
+                if (error) {
+                    console.error("Error loading world data:", error);
+                    return;
+                }
 
-                // Clamp φ to [-90, 90] to prevent over-rotation
-                φ = Math.max(-90, Math.min(90, φ));
+                const countries = topojson.feature(world, world.objects.countries);
+                const borders = topojson.mesh(world, world.objects.countries, function(a, b) { return a !== b; });
 
-                // Apply rotation with γ = 0
-                projection.rotate([λ, φ, 0]); // γ component is always 0
+                // Draw land
+                landGroup.selectAll(".land")
+                    .data(countries.features)
+                    .enter().append("path")
+                    .attr("class", "land")
+                    .attr("d", path);
 
-                // Update all paths
-                svg.selectAll("path").attr("d", path);
-
-                updateRotationDisplay();
+                // Draw boundaries
+                boundaryGroup.append("path")
+                    .datum(borders)
+                    .attr("class", "boundary")
+                    .attr("d", path);
             });
 
-        foreground.call(drag);
+            // Rotation with γ component locked to 0
+            let λ = 0, φ = 0; // Only use λ (lambda) and φ (phi), γ (gamma) stays at 0
+            const rotationDisplay = d3.select("#rotation-display");
 
-        // Initial rotation display
-        updateRotationDisplay();
+            function updateRotationDisplay() {
+                rotationDisplay.html(`λ: ${λ.toFixed(1)}°, φ: ${φ.toFixed(1)}°, γ: 0.0° (locked)`);
+            }
 
-        // Handle window resize
-        window.addEventListener('resize', function() {
-            location.reload(); // Simple reload on resize
-        });
+            // Drag behavior with γ locked to 0
+            const drag = d3.behavior.drag()
+                .origin(function() {
+                    const r = projection.rotate();
+                    return {x: r[0], y: -r[1]};
+                })
+                .on("drag", function() {
+                    // Calculate new rotation - only update λ and φ, keep γ at 0
+                    λ = d3.event.x;
+                    φ = -d3.event.y;
 
-        // Optional: Auto-rotate slowly
-        // Uncomment the following to enable auto-rotation
-        /*
-        d3.timer(function(elapsed) {
-            λ = (λ + 0.02) % 360;
-            projection.rotate([λ, φ, 0]);
-            svg.selectAll("path").attr("d", path);
+                    // Clamp φ to [-90, 90] to prevent over-rotation
+                    φ = Math.max(-90, Math.min(90, φ));
+
+                    // Apply rotation with γ = 0
+                    projection.rotate([λ, φ, 0]); // γ component is always 0
+
+                    // Update all paths
+                    svg.selectAll("path").attr("d", path);
+
+                    updateRotationDisplay();
+                });
+
+            foreground.call(drag);
+
+            // Initial rotation display
             updateRotationDisplay();
+
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                location.reload(); // Simple reload on resize
+            });
+
+            // Optional: Auto-rotate slowly
+            // Uncomment the following to enable auto-rotation
+            /*
+            d3.timer(function(elapsed) {
+                λ = (λ + 0.02) % 360;
+                projection.rotate([λ, φ, 0]);
+                svg.selectAll("path").attr("d", path);
+                updateRotationDisplay();
+            });
+            */
         });
-        */
     </script>
 </body>
 </html>
