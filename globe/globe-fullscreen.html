@@ -15,7 +15,7 @@
             width: 100vw;
             height: 100vh;
             overflow: hidden;
-            background: #000;
+            background: #e8f4f8;
             font-family: sans-serif;
         }
 
@@ -33,26 +33,26 @@
 
         .graticule {
             fill: none;
-            stroke: #636B62;
+            stroke: #ccc;
             stroke-width: 0.5px;
             stroke-dasharray: 2,2;
         }
 
         .land {
-            fill: #69D2E7;
+            fill: #2a7f62;
             stroke: none;
         }
 
         .boundary {
             fill: none;
-            stroke: #50576A;
+            stroke: #fff;
             stroke-width: 0.5px;
         }
 
         .globe-sphere {
-            fill: #000;
-            stroke: #333;
-            stroke-width: 1px;
+            fill: #d4e8f0;
+            stroke: #89b6c9;
+            stroke-width: 1.5px;
         }
 
         .foreground {
@@ -71,12 +71,13 @@
             position: absolute;
             top: 20px;
             left: 20px;
-            color: #69D2E7;
+            color: #2a7f62;
             font-size: 14px;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(255, 255, 255, 0.9);
             padding: 10px;
             border-radius: 5px;
             font-family: monospace;
+            border: 1px solid #89b6c9;
         }
     </style>
 </head>
@@ -90,6 +91,87 @@
     <script src="https://d3js.org/d3.v3.min.js"></script>
     <script src="https://d3js.org/d3.geo.projection.v0.min.js"></script>
     <script src="https://d3js.org/topojson.v1.min.js"></script>
+
+    <script>
+        // Versor library implementation for quaternion-based rotation
+        // Based on Mike Bostock's versor.js for proper globe rotation
+        (function() {
+            var acos = Math.acos,
+                asin = Math.asin,
+                atan2 = Math.atan2,
+                cos = Math.cos,
+                max = Math.max,
+                min = Math.min,
+                PI = Math.PI,
+                sin = Math.sin,
+                sqrt = Math.sqrt,
+                radians = PI / 180,
+                degrees = 180 / PI;
+
+            // Creates a quaternion from Euler angles [λ, φ, γ] in degrees
+            function versor(e) {
+                var l = e[0] / 2 * radians,
+                    p = e[1] / 2 * radians,
+                    g = e[2] / 2 * radians,
+                    sl = sin(l), cl = cos(l),
+                    sp = sin(p), cp = cos(p),
+                    sg = sin(g), cg = cos(g);
+                return [
+                    cl * cp * cg + sl * sp * sg,
+                    sl * cp * cg - cl * sp * sg,
+                    cl * sp * cg + sl * cp * sg,
+                    cl * cp * sg - sl * sp * cg
+                ];
+            }
+
+            // Converts a quaternion to Euler angles [λ, φ, γ] in degrees
+            versor.rotation = function(q) {
+                return [
+                    atan2(2 * (q[0] * q[1] + q[2] * q[3]), 1 - 2 * (q[1] * q[1] + q[2] * q[2])) * degrees,
+                    asin(max(-1, min(1, 2 * (q[0] * q[2] - q[3] * q[1])))) * degrees,
+                    atan2(2 * (q[0] * q[3] + q[1] * q[2]), 1 - 2 * (q[2] * q[2] + q[3] * q[3])) * degrees
+                ];
+            };
+
+            // Converts spherical coordinates [λ, φ] in degrees to Cartesian [x, y, z]
+            versor.cartesian = function(e) {
+                var l = e[0] * radians, p = e[1] * radians, cp = cos(p);
+                return [cp * cos(l), cp * sin(l), sin(p)];
+            };
+
+            // Returns the quaternion to rotate between two Cartesian points
+            versor.delta = function(v0, v1) {
+                var w = cross(v0, v1), l = sqrt(dot(w, w));
+                if (!l) return [1, 0, 0, 0];
+                var t = acos(max(-1, min(1, dot(v0, v1)))) / 2, s = sin(t);
+                return [cos(t), w[2] / l * s, -w[1] / l * s, w[0] / l * s];
+            };
+
+            // Quaternion multiplication
+            versor.multiply = function(a, b) {
+                return [
+                    a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+                    a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
+                    a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
+                    a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]
+                ];
+            };
+
+            function cross(v0, v1) {
+                return [
+                    v0[1] * v1[2] - v0[2] * v1[1],
+                    v0[2] * v1[0] - v0[0] * v1[2],
+                    v0[0] * v1[1] - v0[1] * v1[0]
+                ];
+            }
+
+            function dot(v0, v1) {
+                return v0[0] * v1[0] + v0[1] * v1[1] + v0[2] * v1[2];
+            }
+
+            window.versor = versor;
+        })();
+    </script>
 
     <script>
         // Wait for all libraries to load
@@ -162,57 +244,65 @@
                     .attr("d", path);
             });
 
-            // Rotation with γ component locked to 0
-            let λ = 0, φ = 0; // Only use λ (lambda) and φ (phi), γ (gamma) stays at 0
+            // Rotation display
             const rotationDisplay = d3.select("#rotation-display");
 
-            function updateRotationDisplay() {
-                rotationDisplay.html(`λ: ${λ.toFixed(1)}°, φ: ${φ.toFixed(1)}°, γ: 0.0° (locked)`);
+            function updateRotationDisplay(r) {
+                rotationDisplay.html(`λ: ${r[0].toFixed(1)}°, φ: ${r[1].toFixed(1)}°, γ: ${r[2].toFixed(1)}° (locked to 0)`);
             }
 
-            // Drag behavior with γ locked to 0
+            // Versor-based drag behavior with γ locked to 0
+            let v0, r0, q0;
+
             const drag = d3.behavior.drag()
-                .origin(function() {
-                    const r = projection.rotate();
-                    return {x: r[0], y: -r[1]};
+                .on("dragstart", function() {
+                    const p = d3.mouse(this);
+                    const inverted = projection.invert(p);
+                    if (!inverted) return; // clicked outside projection
+
+                    v0 = versor.cartesian(inverted);
+                    r0 = projection.rotate();
+                    q0 = versor(r0);
                 })
                 .on("drag", function() {
-                    // Calculate new rotation - only update λ and φ, keep γ at 0
-                    λ = d3.event.x;
-                    φ = -d3.event.y;
+                    if (!v0) return;
 
-                    // Clamp φ to [-90, 90] to prevent over-rotation
-                    φ = Math.max(-90, Math.min(90, φ));
+                    const p = d3.mouse(this);
+                    const inverted = projection.invert(p);
+                    if (!inverted) return;
 
-                    // Apply rotation with γ = 0
-                    projection.rotate([λ, φ, 0]); // γ component is always 0
+                    const v1 = versor.cartesian(inverted);
+                    const delta = versor.delta(v0, v1);
+                    let q1 = versor.multiply(q0, delta);
+
+                    // Convert quaternion to Euler angles
+                    let r1 = versor.rotation(q1);
+
+                    // Lock γ to 0
+                    r1[2] = 0;
+
+                    // Convert back to quaternion with γ=0 to maintain consistency
+                    q0 = versor(r1);
+                    v0 = v1;
+
+                    // Apply rotation
+                    projection.rotate(r1);
 
                     // Update all paths
                     svg.selectAll("path").attr("d", path);
 
-                    updateRotationDisplay();
+                    updateRotationDisplay(r1);
                 });
 
             foreground.call(drag);
 
             // Initial rotation display
-            updateRotationDisplay();
+            updateRotationDisplay(projection.rotate());
 
             // Handle window resize
             window.addEventListener('resize', function() {
                 location.reload(); // Simple reload on resize
             });
-
-            // Optional: Auto-rotate slowly
-            // Uncomment the following to enable auto-rotation
-            /*
-            d3.timer(function(elapsed) {
-                λ = (λ + 0.02) % 360;
-                projection.rotate([λ, φ, 0]);
-                svg.selectAll("path").attr("d", path);
-                updateRotationDisplay();
-            });
-            */
         });
     </script>
 </body>
