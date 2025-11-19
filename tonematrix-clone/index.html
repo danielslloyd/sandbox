@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ToneMatrix Clone</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .matrix-wrapper {
+            position: relative;
+            padding: 10px;
+            background: #0a0a0a;
+            border-radius: 4px;
+        }
+
+        .matrix {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            gap: 2px;
+            background: #111;
+            padding: 2px;
+        }
+
+        .cell {
+            width: 28px;
+            height: 28px;
+            background: #1a1a1a;
+            border-radius: 2px;
+            cursor: pointer;
+            transition: all 0.1s ease;
+            position: relative;
+        }
+
+        .cell:hover {
+            background: #2a2a2a;
+        }
+
+        .cell.active {
+            background: #00d4aa;
+            box-shadow: 0 0 15px #00d4aa, 0 0 30px rgba(0, 212, 170, 0.5);
+        }
+
+        .cell.playing {
+            background: #fff;
+            box-shadow: 0 0 20px #fff, 0 0 40px rgba(255, 255, 255, 0.8);
+        }
+
+        .cell.column-highlight {
+            background: #2a2a2a;
+        }
+
+        .cell.active.column-highlight {
+            background: #00ffcc;
+            box-shadow: 0 0 20px #00ffcc, 0 0 40px rgba(0, 255, 204, 0.7);
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .btn {
+            background: #1a1a1a;
+            color: #00d4aa;
+            border: 1px solid #00d4aa;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: #00d4aa;
+            color: #000;
+        }
+
+        .btn.active {
+            background: #00d4aa;
+            color: #000;
+        }
+
+        .tempo-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #00d4aa;
+        }
+
+        .tempo-control input {
+            width: 100px;
+            accent-color: #00d4aa;
+        }
+
+        .tempo-value {
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .title {
+            color: #00d4aa;
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+        }
+
+        .instructions {
+            color: #444;
+            font-size: 12px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">ToneMatrix</h1>
+
+        <div class="matrix-wrapper">
+            <div class="matrix" id="matrix"></div>
+        </div>
+
+        <div class="controls">
+            <button class="btn" id="playBtn">Play</button>
+            <button class="btn" id="clearBtn">Clear</button>
+            <div class="tempo-control">
+                <label for="tempo">BPM:</label>
+                <input type="range" id="tempo" min="60" max="240" value="120">
+                <span class="tempo-value" id="tempoValue">120</span>
+            </div>
+        </div>
+
+        <p class="instructions">Click cells to create music. The sequence loops continuously.</p>
+    </div>
+
+    <script>
+        // Audio Context
+        let audioContext;
+        let isPlaying = false;
+        let currentColumn = 0;
+        let intervalId = null;
+        let tempo = 120;
+
+        // Grid state (16x16)
+        const ROWS = 16;
+        const COLS = 16;
+        const grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(false));
+
+        // Pentatonic scale frequencies (C major pentatonic, spanning multiple octaves)
+        // From high to low (top to bottom on grid)
+        const frequencies = [
+            1318.51, // E6
+            1174.66, // D6
+            1046.50, // C6
+            880.00,  // A5
+            783.99,  // G5
+            659.26,  // E5
+            587.33,  // D5
+            523.25,  // C5
+            440.00,  // A4
+            392.00,  // G4
+            329.63,  // E4
+            293.66,  // D4
+            261.63,  // C4
+            220.00,  // A3
+            196.00,  // G3
+            164.81   // E3
+        ];
+
+        // Initialize the matrix
+        function initMatrix() {
+            const matrix = document.getElementById('matrix');
+
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+
+                    cell.addEventListener('click', () => toggleCell(row, col, cell));
+                    cell.addEventListener('mouseenter', (e) => {
+                        if (e.buttons === 1) {
+                            toggleCell(row, col, cell);
+                        }
+                    });
+
+                    matrix.appendChild(cell);
+                }
+            }
+        }
+
+        // Toggle cell state
+        function toggleCell(row, col, cell) {
+            grid[row][col] = !grid[row][col];
+            cell.classList.toggle('active');
+
+            // Play sound on activation
+            if (grid[row][col] && audioContext) {
+                playNote(frequencies[row], 0.1);
+            }
+        }
+
+        // Initialize Audio Context
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // Play a note
+        function playNote(frequency, duration) {
+            if (!audioContext) return;
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+
+            // Envelope
+            const now = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.3, now + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            oscillator.start(now);
+            oscillator.stop(now + duration);
+        }
+
+        // Play column
+        function playColumn(col) {
+            // Remove highlight from all cells
+            document.querySelectorAll('.cell').forEach(cell => {
+                cell.classList.remove('column-highlight');
+            });
+
+            // Highlight current column and play active notes
+            for (let row = 0; row < ROWS; row++) {
+                const cellIndex = row * COLS + col;
+                const cell = document.querySelectorAll('.cell')[cellIndex];
+                cell.classList.add('column-highlight');
+
+                if (grid[row][col]) {
+                    playNote(frequencies[row], 0.5);
+                }
+            }
+        }
+
+        // Start/Stop playback
+        function togglePlay() {
+            const playBtn = document.getElementById('playBtn');
+
+            if (isPlaying) {
+                // Stop
+                isPlaying = false;
+                clearInterval(intervalId);
+                playBtn.textContent = 'Play';
+                playBtn.classList.remove('active');
+
+                // Remove all highlights
+                document.querySelectorAll('.cell').forEach(cell => {
+                    cell.classList.remove('column-highlight');
+                });
+            } else {
+                // Start
+                initAudio();
+                isPlaying = true;
+                playBtn.textContent = 'Stop';
+                playBtn.classList.add('active');
+
+                const intervalMs = (60 / tempo) * 1000 / 4; // 16th notes
+
+                intervalId = setInterval(() => {
+                    playColumn(currentColumn);
+                    currentColumn = (currentColumn + 1) % COLS;
+                }, intervalMs);
+            }
+        }
+
+        // Clear grid
+        function clearGrid() {
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    grid[row][col] = false;
+                }
+            }
+
+            document.querySelectorAll('.cell').forEach(cell => {
+                cell.classList.remove('active');
+            });
+        }
+
+        // Update tempo
+        function updateTempo(value) {
+            tempo = parseInt(value);
+            document.getElementById('tempoValue').textContent = value;
+
+            // If playing, restart with new tempo
+            if (isPlaying) {
+                clearInterval(intervalId);
+                const intervalMs = (60 / tempo) * 1000 / 4;
+                intervalId = setInterval(() => {
+                    playColumn(currentColumn);
+                    currentColumn = (currentColumn + 1) % COLS;
+                }, intervalMs);
+            }
+        }
+
+        // Event listeners
+        document.getElementById('playBtn').addEventListener('click', togglePlay);
+        document.getElementById('clearBtn').addEventListener('click', clearGrid);
+        document.getElementById('tempo').addEventListener('input', (e) => updateTempo(e.target.value));
+
+        // Initialize on load
+        window.addEventListener('load', initMatrix);
+
+        // Handle spacebar for play/pause
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                togglePlay();
+            }
+        });
+    </script>
+</body>
+</html>
