@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canyon Flight</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            pointer-events: none;
+        }
+
+        #hud div {
+            margin-bottom: 8px;
+        }
+
+        #controls-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            max-width: 280px;
+        }
+
+        #controls-panel h3 {
+            margin-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.3);
+            padding-bottom: 8px;
+        }
+
+        #controls-panel label {
+            display: block;
+            margin: 8px 0 4px;
+        }
+
+        #controls-panel input[type="range"] {
+            width: 100%;
+        }
+
+        #controls-panel select, #controls-panel button {
+            width: 100%;
+            padding: 6px;
+            margin-top: 4px;
+            border-radius: 4px;
+            border: none;
+        }
+
+        #controls-panel button {
+            background: #4CAF50;
+            color: white;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        #controls-panel button:hover {
+            background: #45a049;
+        }
+
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+        }
+
+        .checkbox-container input {
+            margin-right: 8px;
+        }
+
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 40px;
+            border-radius: 12px;
+            color: white;
+            text-align: center;
+            display: none;
+        }
+
+        #game-over h2 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            color: #ff4444;
+        }
+
+        #game-over p {
+            font-size: 20px;
+            margin-bottom: 20px;
+        }
+
+        #game-over button {
+            padding: 12px 30px;
+            font-size: 18px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 6px;
+            color: white;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .value-display {
+            color: #88ff88;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="hud">
+            <div>Score: <span id="score">0</span></div>
+            <div>Rings: <span id="rings-collected">0</span></div>
+            <div>Health: <span id="health">100</span></div>
+        </div>
+
+        <div id="controls-panel">
+            <h3>Settings</h3>
+
+            <label>Time of Day:</label>
+            <select id="time-of-day">
+                <option value="morning">Morning (Fog)</option>
+                <option value="noon">Noon</option>
+                <option value="sunset" selected>Sunset</option>
+            </select>
+
+            <label>Canyon Detail (LOD): <span id="lod-value" class="value-display">5</span></label>
+            <input type="range" id="canyon-lod" min="2" max="8" value="5">
+
+            <label>Ring Frequency: <span id="ring-freq-value" class="value-display">3</span></label>
+            <input type="range" id="ring-frequency" min="1" max="10" value="3">
+
+            <label>Flight Speed: <span id="speed-value" class="value-display">1.0</span>x</label>
+            <input type="range" id="flight-speed" min="0.5" max="3" step="0.1" value="1">
+
+            <div class="checkbox-container">
+                <input type="checkbox" id="enemies-enabled" checked>
+                <label for="enemies-enabled">Enable Enemy Planes</label>
+            </div>
+
+            <label>Enemy Difficulty: <span id="enemy-diff-value" class="value-display">5</span></label>
+            <input type="range" id="enemy-difficulty" min="1" max="10" value="5">
+
+            <button id="apply-settings">Apply Settings</button>
+        </div>
+
+        <div id="game-over">
+            <h2>CRASHED!</h2>
+            <p>Final Score: <span id="final-score">0</span></p>
+            <button id="restart-btn">Restart</button>
+        </div>
+
+        <div id="instructions">
+            <strong>Controls:</strong> W/S - Pitch | A/D - Roll | Space - Shoot | P - Pause
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // Game Configuration
+        const CONFIG = {
+            canyonWidth: 120,
+            canyonHeight: 80,
+            canyonDepth: 2000,
+            segmentLength: 100,
+            visibleSegments: 20,
+            lodLevel: 5,
+            ringFrequency: 3,
+            flightSpeed: 1.0,
+            enemiesEnabled: true,
+            enemyDifficulty: 5,
+            timeOfDay: 'sunset'
+        };
+
+        // Game State
+        let score = 0;
+        let ringsCollected = 0;
+        let health = 100;
+        let gameOver = false;
+        let paused = false;
+
+        // Three.js components
+        let scene, camera, renderer;
+        let aircraft, aircraftGroup;
+        let canyonSegments = [];
+        let rings = [];
+        let enemies = [];
+        let bullets = [];
+        let enemyBullets = [];
+
+        // Controls
+        const keys = {};
+        let pitch = 0;
+        let roll = 0;
+
+        // Position tracking
+        let playerZ = 0;
+        let lastSegmentZ = 0;
+
+        // Noise function for fractal terrain
+        class SimplexNoise {
+            constructor(seed = Math.random()) {
+                this.p = new Uint8Array(256);
+                for (let i = 0; i < 256; i++) this.p[i] = i;
+
+                // Shuffle
+                let n, q;
+                for (let i = 255; i > 0; i--) {
+                    n = Math.floor((seed = (seed * 16807) % 2147483647) / 2147483647 * (i + 1));
+                    q = this.p[i];
+                    this.p[i] = this.p[n];
+                    this.p[n] = q;
+                }
+
+                this.perm = new Uint8Array(512);
+                for (let i = 0; i < 512; i++) this.perm[i] = this.p[i & 255];
+            }
+
+            noise2D(x, y) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+                const u = this.fade(x);
+                const v = this.fade(y);
+                const A = this.perm[X] + Y;
+                const B = this.perm[X + 1] + Y;
+                return this.lerp(v,
+                    this.lerp(u, this.grad(this.perm[A], x, y), this.grad(this.perm[B], x - 1, y)),
+                    this.lerp(u, this.grad(this.perm[A + 1], x, y - 1), this.grad(this.perm[B + 1], x - 1, y - 1))
+                );
+            }
+
+            fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+            lerp(t, a, b) { return a + t * (b - a); }
+            grad(hash, x, y) {
+                const h = hash & 15;
+                const u = h < 8 ? x : y;
+                const v = h < 4 ? y : h === 12 || h === 14 ? x : 0;
+                return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
+            }
+
+            // Fractal Brownian Motion for more detailed terrain
+            fbm(x, y, octaves = 6, persistence = 0.5, lacunarity = 2.0) {
+                let value = 0;
+                let amplitude = 1;
+                let frequency = 1;
+                let maxValue = 0;
+
+                for (let i = 0; i < octaves; i++) {
+                    value += amplitude * this.noise2D(x * frequency, y * frequency);
+                    maxValue += amplitude;
+                    amplitude *= persistence;
+                    frequency *= lacunarity;
+                }
+
+                return value / maxValue;
+            }
+        }
+
+        const noise = new SimplexNoise(12345);
+
+        // Initialize the game
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 3000);
+            camera.position.set(0, 10, 30);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('game-container').appendChild(renderer.domElement);
+
+            // Create game elements
+            createSkybox();
+            setupLighting();
+            createAircraft();
+            createInitialCanyon();
+
+            // Event listeners
+            setupEventListeners();
+
+            // Start game loop
+            animate();
+        }
+
+        function createSkybox() {
+            updateSkybox();
+        }
+
+        function updateSkybox() {
+            // Remove old skybox
+            const oldSkybox = scene.getObjectByName('skybox');
+            if (oldSkybox) scene.remove(oldSkybox);
+
+            let skyColors;
+            switch (CONFIG.timeOfDay) {
+                case 'morning':
+                    skyColors = {
+                        top: new THREE.Color(0x87CEEB),
+                        bottom: new THREE.Color(0xFFE4B5)
+                    };
+                    scene.fog = new THREE.FogExp2(0xCCCCCC, 0.003);
+                    break;
+                case 'noon':
+                    skyColors = {
+                        top: new THREE.Color(0x0077FF),
+                        bottom: new THREE.Color(0x87CEEB)
+                    };
+                    scene.fog = null;
+                    break;
+                case 'sunset':
+                    skyColors = {
+                        top: new THREE.Color(0x1a0533),
+                        bottom: new THREE.Color(0xFF6B35)
+                    };
+                    scene.fog = new THREE.FogExp2(0xFF8C69, 0.0008);
+                    break;
+            }
+
+            // Gradient sky sphere
+            const skyGeo = new THREE.SphereGeometry(2000, 32, 32);
+            const skyMat = new THREE.ShaderMaterial({
+                uniforms: {
+                    topColor: { value: skyColors.top },
+                    bottomColor: { value: skyColors.bottom },
+                    offset: { value: 400 },
+                    exponent: { value: 0.6 }
+                },
+                vertexShader: `
+                    varying vec3 vWorldPosition;
+                    void main() {
+                        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                        vWorldPosition = worldPosition.xyz;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 topColor;
+                    uniform vec3 bottomColor;
+                    uniform float offset;
+                    uniform float exponent;
+                    varying vec3 vWorldPosition;
+                    void main() {
+                        float h = normalize(vWorldPosition + offset).y;
+                        gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+                    }
+                `,
+                side: THREE.BackSide
+            });
+
+            const sky = new THREE.Mesh(skyGeo, skyMat);
+            sky.name = 'skybox';
+            scene.add(sky);
+        }
+
+        function setupLighting() {
+            // Remove old lights
+            scene.children = scene.children.filter(child => !(child instanceof THREE.Light));
+
+            // Ambient light
+            let ambientIntensity, ambientColor;
+            let sunPosition, sunColor, sunIntensity;
+
+            switch (CONFIG.timeOfDay) {
+                case 'morning':
+                    ambientIntensity = 0.4;
+                    ambientColor = 0xB0C4DE;
+                    sunPosition = new THREE.Vector3(100, 30, -100);
+                    sunColor = 0xFFE4C4;
+                    sunIntensity = 1.0;
+                    break;
+                case 'noon':
+                    ambientIntensity = 0.6;
+                    ambientColor = 0xFFFFFF;
+                    sunPosition = new THREE.Vector3(0, 200, -50);
+                    sunColor = 0xFFFFFF;
+                    sunIntensity = 1.5;
+                    break;
+                case 'sunset':
+                    ambientIntensity = 0.3;
+                    ambientColor = 0xFF8C69;
+                    sunPosition = new THREE.Vector3(-200, 20, -100);
+                    sunColor = 0xFF4500;
+                    sunIntensity = 1.2;
+                    break;
+            }
+
+            const ambient = new THREE.AmbientLight(ambientColor, ambientIntensity);
+            scene.add(ambient);
+
+            // Directional light (sun)
+            const sun = new THREE.DirectionalLight(sunColor, sunIntensity);
+            sun.position.copy(sunPosition);
+            sun.castShadow = true;
+            sun.shadow.mapSize.width = 2048;
+            sun.shadow.mapSize.height = 2048;
+            sun.shadow.camera.near = 0.5;
+            sun.shadow.camera.far = 500;
+            sun.shadow.camera.left = -150;
+            sun.shadow.camera.right = 150;
+            sun.shadow.camera.top = 150;
+            sun.shadow.camera.bottom = -150;
+            scene.add(sun);
+
+            // Add sun visual for sunset
+            if (CONFIG.timeOfDay === 'sunset') {
+                const sunGeo = new THREE.SphereGeometry(30, 32, 32);
+                const sunMat = new THREE.MeshBasicMaterial({
+                    color: 0xFF6600,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+                sunMesh.position.copy(sunPosition).multiplyScalar(5);
+                sunMesh.name = 'sunVisual';
+                scene.add(sunMesh);
+            }
+        }
+
+        function createAircraft() {
+            aircraftGroup = new THREE.Group();
+
+            // Fuselage
+            const fuselageGeo = new THREE.CylinderGeometry(0.5, 0.8, 4, 8);
+            const fuselageMat = new THREE.MeshPhongMaterial({ color: 0x4488ff });
+            const fuselage = new THREE.Mesh(fuselageGeo, fuselageMat);
+            fuselage.rotation.x = Math.PI / 2;
+            fuselage.castShadow = true;
+            aircraftGroup.add(fuselage);
+
+            // Wings
+            const wingGeo = new THREE.BoxGeometry(8, 0.1, 1.5);
+            const wingMat = new THREE.MeshPhongMaterial({ color: 0x3377dd });
+            const wings = new THREE.Mesh(wingGeo, wingMat);
+            wings.position.z = 0.5;
+            wings.castShadow = true;
+            aircraftGroup.add(wings);
+
+            // Tail
+            const tailGeo = new THREE.BoxGeometry(2, 0.1, 1);
+            const tail = new THREE.Mesh(tailGeo, wingMat);
+            tail.position.z = 2;
+            tail.position.y = 0.3;
+            tail.castShadow = true;
+            aircraftGroup.add(tail);
+
+            // Vertical stabilizer
+            const vStabGeo = new THREE.BoxGeometry(0.1, 1.5, 1);
+            const vStab = new THREE.Mesh(vStabGeo, wingMat);
+            vStab.position.z = 2;
+            vStab.position.y = 0.75;
+            vStab.castShadow = true;
+            aircraftGroup.add(vStab);
+
+            // Cockpit
+            const cockpitGeo = new THREE.SphereGeometry(0.6, 8, 8);
+            const cockpitMat = new THREE.MeshPhongMaterial({
+                color: 0x88ccff,
+                transparent: true,
+                opacity: 0.7
+            });
+            const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat);
+            cockpit.position.z = -0.8;
+            cockpit.position.y = 0.3;
+            cockpit.scale.z = 1.5;
+            aircraftGroup.add(cockpit);
+
+            // Propeller
+            const propGeo = new THREE.BoxGeometry(2, 0.1, 0.2);
+            const propMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
+            const propeller = new THREE.Mesh(propGeo, propMat);
+            propeller.position.z = -2.2;
+            propeller.name = 'propeller';
+            aircraftGroup.add(propeller);
+
+            aircraftGroup.position.set(0, 15, 0);
+            aircraft = aircraftGroup;
+            scene.add(aircraftGroup);
+        }
+
+        function createCanyonSegment(zPosition) {
+            const segment = new THREE.Group();
+            segment.userData.zPosition = zPosition;
+
+            const resolution = Math.pow(2, CONFIG.lodLevel);
+            const halfWidth = CONFIG.canyonWidth / 2;
+
+            // Create canyon walls using fractal displacement
+            const wallGeometry = new THREE.PlaneGeometry(
+                CONFIG.canyonHeight,
+                CONFIG.segmentLength,
+                resolution,
+                resolution
+            );
+
+            // Displace vertices for fractal appearance
+            const positions = wallGeometry.attributes.position;
+            for (let i = 0; i < positions.count; i++) {
+                const x = positions.getX(i);
+                const y = positions.getY(i);
+                const worldZ = zPosition + y;
+
+                // Fractal displacement
+                const displacement = noise.fbm(worldZ * 0.01, x * 0.05, CONFIG.lodLevel) * 8;
+                positions.setZ(i, displacement);
+            }
+            wallGeometry.computeVertexNormals();
+
+            // Wall materials with rock texture simulation
+            const wallMaterial = new THREE.MeshPhongMaterial({
+                color: 0x8B4513,
+                flatShading: true,
+                side: THREE.DoubleSide
+            });
+
+            // Left wall
+            const leftWall = new THREE.Mesh(wallGeometry.clone(), wallMaterial);
+            leftWall.rotation.y = Math.PI / 2;
+            leftWall.position.set(-halfWidth, CONFIG.canyonHeight / 2, zPosition - CONFIG.segmentLength / 2);
+            leftWall.receiveShadow = true;
+            leftWall.castShadow = true;
+            segment.add(leftWall);
+
+            // Right wall
+            const rightWall = new THREE.Mesh(wallGeometry.clone(), wallMaterial);
+            rightWall.rotation.y = -Math.PI / 2;
+            rightWall.position.set(halfWidth, CONFIG.canyonHeight / 2, zPosition - CONFIG.segmentLength / 2);
+            rightWall.receiveShadow = true;
+            rightWall.castShadow = true;
+            segment.add(rightWall);
+
+            // Floor
+            const floorGeo = new THREE.PlaneGeometry(
+                CONFIG.canyonWidth,
+                CONFIG.segmentLength,
+                resolution,
+                resolution
+            );
+
+            const floorPositions = floorGeo.attributes.position;
+            for (let i = 0; i < floorPositions.count; i++) {
+                const x = floorPositions.getX(i);
+                const y = floorPositions.getY(i);
+                const worldZ = zPosition + y;
+
+                // Create river channel in the middle
+                const riverWidth = 15;
+                const distFromCenter = Math.abs(x);
+                let height = 0;
+
+                if (distFromCenter < riverWidth) {
+                    // River bed
+                    height = -2 - noise.fbm(worldZ * 0.02, x * 0.1, 3) * 0.5;
+                } else {
+                    // Rocky floor
+                    height = noise.fbm(worldZ * 0.01, x * 0.02, CONFIG.lodLevel) * 5;
+                }
+
+                floorPositions.setZ(i, height);
+            }
+            floorGeo.computeVertexNormals();
+
+            const floorMaterial = new THREE.MeshPhongMaterial({
+                color: 0x654321,
+                flatShading: true
+            });
+
+            const floor = new THREE.Mesh(floorGeo, floorMaterial);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.set(0, 0, zPosition - CONFIG.segmentLength / 2);
+            floor.receiveShadow = true;
+            segment.add(floor);
+
+            // River
+            const riverGeo = new THREE.PlaneGeometry(12, CONFIG.segmentLength, 8, resolution);
+            const riverMaterial = new THREE.MeshPhongMaterial({
+                color: 0x1E90FF,
+                transparent: true,
+                opacity: 0.8,
+                shininess: 100
+            });
+
+            const river = new THREE.Mesh(riverGeo, riverMaterial);
+            river.rotation.x = -Math.PI / 2;
+            river.position.set(0, -1.5, zPosition - CONFIG.segmentLength / 2);
+            segment.add(river);
+
+            // Add rings randomly
+            if (Math.random() < CONFIG.ringFrequency / 10) {
+                createRing(segment, zPosition);
+            }
+
+            scene.add(segment);
+            canyonSegments.push(segment);
+
+            return segment;
+        }
+
+        function createRing(parent, zPosition) {
+            const ringGeo = new THREE.TorusGeometry(5, 0.5, 8, 24);
+            const ringMat = new THREE.MeshPhongMaterial({
+                color: 0xFFD700,
+                emissive: 0x886600,
+                emissiveIntensity: 0.3
+            });
+
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+
+            // Random position within canyon bounds
+            const x = (Math.random() - 0.5) * (CONFIG.canyonWidth - 20);
+            const y = 8 + Math.random() * (CONFIG.canyonHeight - 30);
+            const z = zPosition - Math.random() * CONFIG.segmentLength;
+
+            ring.position.set(x, y, z);
+            ring.rotation.y = Math.PI / 2;
+            ring.userData.isRing = true;
+            ring.userData.collected = false;
+
+            parent.add(ring);
+            rings.push(ring);
+        }
+
+        function createInitialCanyon() {
+            for (let i = 0; i < CONFIG.visibleSegments; i++) {
+                const z = -i * CONFIG.segmentLength;
+                createCanyonSegment(z);
+                lastSegmentZ = z;
+            }
+        }
+
+        function spawnEnemy() {
+            if (!CONFIG.enemiesEnabled) return;
+
+            const enemyGroup = new THREE.Group();
+
+            // Simple enemy plane
+            const bodyGeo = new THREE.ConeGeometry(1, 4, 6);
+            const bodyMat = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.rotation.x = Math.PI / 2;
+            enemyGroup.add(body);
+
+            const wingGeo = new THREE.BoxGeometry(6, 0.1, 1.2);
+            const wingMat = new THREE.MeshPhongMaterial({ color: 0xaa0000 });
+            const wings = new THREE.Mesh(wingGeo, wingMat);
+            enemyGroup.add(wings);
+
+            // Position enemy ahead of player
+            const x = (Math.random() - 0.5) * (CONFIG.canyonWidth - 30);
+            const y = 10 + Math.random() * 30;
+            const z = playerZ - 300 - Math.random() * 200;
+
+            enemyGroup.position.set(x, y, z);
+            enemyGroup.userData.health = 30;
+            enemyGroup.userData.lastShot = 0;
+
+            scene.add(enemyGroup);
+            enemies.push(enemyGroup);
+        }
+
+        function createBullet(position, direction, isEnemy = false) {
+            const bulletGeo = new THREE.SphereGeometry(0.3, 4, 4);
+            const bulletMat = new THREE.MeshBasicMaterial({
+                color: isEnemy ? 0xff0000 : 0x00ff00
+            });
+            const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+
+            bullet.position.copy(position);
+            bullet.userData.direction = direction.clone();
+            bullet.userData.speed = isEnemy ? 100 : 150;
+            bullet.userData.isEnemy = isEnemy;
+
+            scene.add(bullet);
+
+            if (isEnemy) {
+                enemyBullets.push(bullet);
+            } else {
+                bullets.push(bullet);
+            }
+        }
+
+        function setupEventListeners() {
+            // Keyboard controls
+            document.addEventListener('keydown', (e) => {
+                keys[e.key.toLowerCase()] = true;
+
+                if (e.key.toLowerCase() === 'p') {
+                    paused = !paused;
+                }
+
+                if (e.key === ' ') {
+                    e.preventDefault();
+                    shootBullet();
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                keys[e.key.toLowerCase()] = false;
+            });
+
+            // Window resize
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            // Settings controls
+            document.getElementById('apply-settings').addEventListener('click', applySettings);
+            document.getElementById('restart-btn').addEventListener('click', restartGame);
+
+            // Value display updates
+            document.getElementById('canyon-lod').addEventListener('input', (e) => {
+                document.getElementById('lod-value').textContent = e.target.value;
+            });
+
+            document.getElementById('ring-frequency').addEventListener('input', (e) => {
+                document.getElementById('ring-freq-value').textContent = e.target.value;
+            });
+
+            document.getElementById('flight-speed').addEventListener('input', (e) => {
+                document.getElementById('speed-value').textContent = e.target.value;
+            });
+
+            document.getElementById('enemy-difficulty').addEventListener('input', (e) => {
+                document.getElementById('enemy-diff-value').textContent = e.target.value;
+            });
+        }
+
+        function shootBullet() {
+            if (gameOver) return;
+
+            const direction = new THREE.Vector3(0, 0, -1);
+            direction.applyQuaternion(aircraft.quaternion);
+
+            const bulletPos = aircraft.position.clone();
+            bulletPos.add(direction.clone().multiplyScalar(3));
+
+            createBullet(bulletPos, direction);
+        }
+
+        function applySettings() {
+            CONFIG.timeOfDay = document.getElementById('time-of-day').value;
+            CONFIG.lodLevel = parseInt(document.getElementById('canyon-lod').value);
+            CONFIG.ringFrequency = parseInt(document.getElementById('ring-frequency').value);
+            CONFIG.flightSpeed = parseFloat(document.getElementById('flight-speed').value);
+            CONFIG.enemiesEnabled = document.getElementById('enemies-enabled').checked;
+            CONFIG.enemyDifficulty = parseInt(document.getElementById('enemy-difficulty').value);
+
+            // Update lighting and skybox
+            updateSkybox();
+            setupLighting();
+
+            // Regenerate canyon with new LOD
+            regenerateCanyon();
+        }
+
+        function regenerateCanyon() {
+            // Clear existing segments
+            canyonSegments.forEach(segment => scene.remove(segment));
+            canyonSegments = [];
+            rings = [];
+
+            // Recreate
+            const currentZ = Math.floor(playerZ / CONFIG.segmentLength) * CONFIG.segmentLength;
+            for (let i = 0; i < CONFIG.visibleSegments; i++) {
+                const z = currentZ - i * CONFIG.segmentLength;
+                createCanyonSegment(z);
+                lastSegmentZ = z;
+            }
+        }
+
+        function restartGame() {
+            // Reset state
+            score = 0;
+            ringsCollected = 0;
+            health = 100;
+            gameOver = false;
+            playerZ = 0;
+            pitch = 0;
+            roll = 0;
+
+            // Reset aircraft
+            aircraft.position.set(0, 15, 0);
+            aircraft.rotation.set(0, 0, 0);
+
+            // Clear enemies and bullets
+            enemies.forEach(e => scene.remove(e));
+            bullets.forEach(b => scene.remove(b));
+            enemyBullets.forEach(b => scene.remove(b));
+            enemies = [];
+            bullets = [];
+            enemyBullets = [];
+
+            // Regenerate canyon
+            regenerateCanyon();
+
+            // Update UI
+            updateHUD();
+            document.getElementById('game-over').style.display = 'none';
+        }
+
+        function updateHUD() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('rings-collected').textContent = ringsCollected;
+            document.getElementById('health').textContent = Math.max(0, health);
+        }
+
+        function checkCollisions() {
+            const playerPos = aircraft.position;
+            const halfWidth = CONFIG.canyonWidth / 2 - 5;
+
+            // Wall collision
+            if (Math.abs(playerPos.x) > halfWidth) {
+                triggerDeath();
+                return;
+            }
+
+            // Floor collision (approximate)
+            if (playerPos.y < 3) {
+                triggerDeath();
+                return;
+            }
+
+            // Ceiling (canyon rim)
+            if (playerPos.y > CONFIG.canyonHeight - 5) {
+                aircraft.position.y = CONFIG.canyonHeight - 5;
+            }
+
+            // Ring collection
+            rings.forEach((ring, index) => {
+                if (!ring.userData.collected) {
+                    const worldPos = new THREE.Vector3();
+                    ring.getWorldPosition(worldPos);
+
+                    if (playerPos.distanceTo(worldPos) < 6) {
+                        ring.userData.collected = true;
+                        ring.visible = false;
+                        score += 100;
+                        ringsCollected++;
+                        updateHUD();
+                    }
+                }
+            });
+
+            // Enemy bullets hitting player
+            enemyBullets.forEach((bullet, index) => {
+                if (playerPos.distanceTo(bullet.position) < 2) {
+                    health -= 10;
+                    scene.remove(bullet);
+                    enemyBullets.splice(index, 1);
+                    updateHUD();
+
+                    if (health <= 0) {
+                        triggerDeath();
+                    }
+                }
+            });
+
+            // Player bullets hitting enemies
+            bullets.forEach((bullet, bIndex) => {
+                enemies.forEach((enemy, eIndex) => {
+                    if (bullet.position.distanceTo(enemy.position) < 3) {
+                        enemy.userData.health -= 20;
+                        scene.remove(bullet);
+                        bullets.splice(bIndex, 1);
+
+                        if (enemy.userData.health <= 0) {
+                            scene.remove(enemy);
+                            enemies.splice(eIndex, 1);
+                            score += 200;
+                            updateHUD();
+                        }
+                    }
+                });
+            });
+        }
+
+        function triggerDeath() {
+            gameOver = true;
+            document.getElementById('final-score').textContent = score;
+            document.getElementById('game-over').style.display = 'block';
+        }
+
+        function updateAircraft(delta) {
+            // Control input
+            if (keys['w']) pitch = Math.max(pitch - 2 * delta, -0.8);
+            else if (keys['s']) pitch = Math.min(pitch + 2 * delta, 0.8);
+            else pitch *= 0.95;
+
+            if (keys['a']) roll = Math.max(roll - 2 * delta, -1.0);
+            else if (keys['d']) roll = Math.min(roll + 2 * delta, 1.0);
+            else roll *= 0.95;
+
+            // Apply rotation
+            aircraft.rotation.x = pitch;
+            aircraft.rotation.z = -roll;
+
+            // Calculate movement direction
+            const forward = new THREE.Vector3(0, 0, -1);
+            forward.applyQuaternion(aircraft.quaternion);
+
+            // Move aircraft
+            const speed = 50 * CONFIG.flightSpeed * delta;
+            aircraft.position.add(forward.multiplyScalar(speed));
+
+            // Update position based on pitch
+            aircraft.position.y += -pitch * 30 * delta;
+            aircraft.position.x += roll * 30 * delta;
+
+            // Clamp position
+            aircraft.position.x = Math.max(-CONFIG.canyonWidth/2 + 5,
+                Math.min(CONFIG.canyonWidth/2 - 5, aircraft.position.x));
+            aircraft.position.y = Math.max(3,
+                Math.min(CONFIG.canyonHeight - 5, aircraft.position.y));
+
+            playerZ = aircraft.position.z;
+
+            // Rotate propeller
+            const propeller = aircraft.getObjectByName('propeller');
+            if (propeller) {
+                propeller.rotation.z += 30 * delta;
+            }
+
+            // Update camera to follow aircraft
+            camera.position.x = aircraft.position.x * 0.5;
+            camera.position.y = aircraft.position.y + 5;
+            camera.position.z = aircraft.position.z + 25;
+            camera.lookAt(aircraft.position.x, aircraft.position.y, aircraft.position.z - 50);
+        }
+
+        function updateCanyon() {
+            // Remove old segments and add new ones
+            const playerSegment = Math.floor(-playerZ / CONFIG.segmentLength);
+
+            // Create new segments ahead
+            while (-lastSegmentZ < -playerZ + CONFIG.visibleSegments * CONFIG.segmentLength) {
+                lastSegmentZ -= CONFIG.segmentLength;
+                createCanyonSegment(lastSegmentZ);
+            }
+
+            // Remove segments behind
+            canyonSegments = canyonSegments.filter(segment => {
+                if (segment.userData.zPosition > playerZ + CONFIG.segmentLength * 2) {
+                    scene.remove(segment);
+                    return false;
+                }
+                return true;
+            });
+
+            // Clean up old rings
+            rings = rings.filter(ring => {
+                const worldPos = new THREE.Vector3();
+                ring.getWorldPosition(worldPos);
+                return worldPos.z < playerZ + 100;
+            });
+        }
+
+        function updateEnemies(delta) {
+            if (!CONFIG.enemiesEnabled) return;
+
+            // Spawn new enemies
+            if (Math.random() < 0.005 * CONFIG.enemyDifficulty && enemies.length < 5) {
+                spawnEnemy();
+            }
+
+            const now = Date.now();
+
+            enemies.forEach((enemy, index) => {
+                // Move enemy towards player
+                const toPlayer = aircraft.position.clone().sub(enemy.position);
+                toPlayer.normalize();
+
+                // Enemy movement
+                enemy.position.add(toPlayer.multiplyScalar(20 * delta));
+                enemy.lookAt(aircraft.position);
+
+                // Enemy shooting
+                const shootInterval = 2000 - CONFIG.enemyDifficulty * 150;
+                if (now - enemy.userData.lastShot > shootInterval) {
+                    const direction = aircraft.position.clone().sub(enemy.position).normalize();
+                    createBullet(enemy.position.clone(), direction, true);
+                    enemy.userData.lastShot = now;
+                }
+
+                // Remove if too far behind
+                if (enemy.position.z > playerZ + 100) {
+                    scene.remove(enemy);
+                    enemies.splice(index, 1);
+                }
+            });
+        }
+
+        function updateBullets(delta) {
+            // Player bullets
+            bullets.forEach((bullet, index) => {
+                bullet.position.add(
+                    bullet.userData.direction.clone().multiplyScalar(bullet.userData.speed * delta)
+                );
+
+                // Remove if too far
+                if (bullet.position.distanceTo(aircraft.position) > 500) {
+                    scene.remove(bullet);
+                    bullets.splice(index, 1);
+                }
+            });
+
+            // Enemy bullets
+            enemyBullets.forEach((bullet, index) => {
+                bullet.position.add(
+                    bullet.userData.direction.clone().multiplyScalar(bullet.userData.speed * delta)
+                );
+
+                // Remove if too far
+                if (bullet.position.distanceTo(aircraft.position) > 300) {
+                    scene.remove(bullet);
+                    enemyBullets.splice(index, 1);
+                }
+            });
+        }
+
+        // Animation loop
+        let lastTime = 0;
+        function animate(currentTime = 0) {
+            requestAnimationFrame(animate);
+
+            const delta = Math.min((currentTime - lastTime) / 1000, 0.1);
+            lastTime = currentTime;
+
+            if (!gameOver && !paused) {
+                updateAircraft(delta);
+                updateCanyon();
+                updateEnemies(delta);
+                updateBullets(delta);
+                checkCollisions();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Start the game
+        init();
+    </script>
+</body>
+</html>
