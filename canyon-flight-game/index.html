@@ -768,16 +768,14 @@
             floorGeo.setIndex(floorIndices);
             floorGeo.computeVertexNormals();
 
-            // Materials
+            // Materials - smooth shading lets fractal geometry and lighting do the work
             const wallMaterial = new THREE.MeshPhongMaterial({
                 color: 0x8B4513,
-                flatShading: true,
                 side: THREE.DoubleSide
             });
 
             const floorMaterial = new THREE.MeshPhongMaterial({
-                color: 0x654321,
-                flatShading: true
+                color: 0x654321
             });
 
             // Create meshes
