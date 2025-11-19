@@ -51,6 +51,8 @@
             color: white;
             font-size: 14px;
             max-width: 280px;
+            max-height: 90vh;
+            overflow-y: auto;
         }
 
         #controls-panel h3 {
@@ -172,10 +174,15 @@
             <input type="range" id="canyon-lod" min="2" max="8" value="5">
 
             <label>Ring Frequency: <span id="ring-freq-value" class="value-display">3</span></label>
-            <input type="range" id="ring-frequency" min="1" max="10" value="3">
+            <input type="range" id="ring-frequency" min="0" max="10" value="3">
 
             <label>Flight Speed: <span id="speed-value" class="value-display">1.0</span>x</label>
             <input type="range" id="flight-speed" min="0.5" max="3" step="0.1" value="1">
+
+            <div class="checkbox-container">
+                <input type="checkbox" id="stabilization-enabled" checked>
+                <label for="stabilization-enabled">Auto-stabilization</label>
+            </div>
 
             <div class="checkbox-container">
                 <input type="checkbox" id="enemies-enabled" checked>
@@ -223,7 +230,8 @@
             flightSpeed: 1.0,
             enemiesEnabled: true,
             enemyDifficulty: 5,
-            timeOfDay: 'sunset'
+            timeOfDay: 'sunset',
+            stabilizationEnabled: true
         };
 
         // Game State
@@ -241,15 +249,20 @@
         let enemies = [];
         let bullets = [];
         let enemyBullets = [];
+        let fogPlanes = [];
 
         // Controls
         const keys = {};
         let pitch = 0;
         let roll = 0;
+        let yaw = 0;
 
         // Position tracking
         let playerZ = 0;
         let lastSegmentZ = 0;
+
+        // Canyon path - stores the center X position at each Z
+        const canyonPath = new Map();
 
         // Noise function for fractal terrain
         class SimplexNoise {
@@ -313,6 +326,21 @@
         }
 
         const noise = new SimplexNoise(12345);
+        const pathNoise = new SimplexNoise(67890);
+
+        // Get canyon center position at a given Z
+        function getCanyonCenter(z) {
+            // Use noise to create winding path
+            const curve1 = pathNoise.noise2D(z * 0.003, 0) * 40;
+            const curve2 = pathNoise.noise2D(z * 0.008, 100) * 20;
+            const curve3 = pathNoise.noise2D(z * 0.015, 200) * 10;
+            return curve1 + curve2 + curve3;
+        }
+
+        // Get cross-section shape factor (0 = V-shape, 1 = U-shape)
+        function getCrossSectionShape(z) {
+            return (pathNoise.noise2D(z * 0.005, 500) + 1) / 2;
+        }
 
         // Initialize the game
         function init() {
@@ -335,6 +363,7 @@
             setupLighting();
             createAircraft();
             createInitialCanyon();
+            createFogPlanes();
 
             // Event listeners
             setupEventListeners();
@@ -359,23 +388,23 @@
                         top: new THREE.Color(0x87CEEB),
                         bottom: new THREE.Color(0xFFE4B5)
                     };
-                    scene.fog = new THREE.FogExp2(0xCCCCCC, 0.003);
                     break;
                 case 'noon':
                     skyColors = {
                         top: new THREE.Color(0x0077FF),
                         bottom: new THREE.Color(0x87CEEB)
                     };
-                    scene.fog = null;
                     break;
                 case 'sunset':
                     skyColors = {
                         top: new THREE.Color(0x1a0533),
                         bottom: new THREE.Color(0xFF6B35)
                     };
-                    scene.fog = new THREE.FogExp2(0xFF8C69, 0.0008);
                     break;
             }
+
+            // Clear any Three.js fog
+            scene.fog = null;
 
             // Gradient sky sphere
             const skyGeo = new THREE.SphereGeometry(2000, 32, 32);
@@ -413,9 +442,58 @@
             scene.add(sky);
         }
 
+        function createFogPlanes() {
+            // Remove old fog planes
+            fogPlanes.forEach(plane => scene.remove(plane));
+            fogPlanes = [];
+
+            if (CONFIG.timeOfDay !== 'morning') return;
+
+            // Create semi-translucent planes at regular intervals for fog effect
+            const fogColor = new THREE.Color(0xCCCCCC);
+            const numPlanes = 15;
+            const spacing = 80;
+
+            for (let i = 0; i < numPlanes; i++) {
+                const opacity = 0.03 + (i / numPlanes) * 0.08;
+                const fogMat = new THREE.MeshBasicMaterial({
+                    color: fogColor,
+                    transparent: true,
+                    opacity: opacity,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                });
+
+                const fogGeo = new THREE.PlaneGeometry(CONFIG.canyonWidth * 2, CONFIG.canyonHeight * 2);
+                const fogPlane = new THREE.Mesh(fogGeo, fogMat);
+                fogPlane.userData.fogIndex = i;
+                fogPlane.userData.spacing = spacing;
+                fogPlane.renderOrder = 1000 + i;
+
+                scene.add(fogPlane);
+                fogPlanes.push(fogPlane);
+            }
+        }
+
+        function updateFogPlanes() {
+            if (CONFIG.timeOfDay !== 'morning') return;
+
+            fogPlanes.forEach((plane, i) => {
+                const spacing = plane.userData.spacing;
+                const baseZ = aircraft.position.z - 50;
+                const z = baseZ - (i + 1) * spacing;
+
+                // Position at canyon center
+                const centerX = getCanyonCenter(z);
+                plane.position.set(centerX, CONFIG.canyonHeight / 2, z);
+            });
+        }
+
         function setupLighting() {
-            // Remove old lights
-            scene.children = scene.children.filter(child => !(child instanceof THREE.Light));
+            // Remove old lights and sun visual
+            scene.children = scene.children.filter(child =>
+                !(child instanceof THREE.Light) && child.name !== 'sunVisual'
+            );
 
             // Ambient light
             let ambientIntensity, ambientColor;
@@ -430,11 +508,12 @@
                     sunIntensity = 1.0;
                     break;
                 case 'noon':
-                    ambientIntensity = 0.6;
+                    // Harsh directional light for noon
+                    ambientIntensity = 0.2;
                     ambientColor = 0xFFFFFF;
                     sunPosition = new THREE.Vector3(0, 200, -50);
                     sunColor = 0xFFFFFF;
-                    sunIntensity = 1.5;
+                    sunIntensity = 2.5;
                     break;
                 case 'sunset':
                     ambientIntensity = 0.3;
@@ -545,94 +624,195 @@
             const resolution = Math.pow(2, CONFIG.lodLevel);
             const halfWidth = CONFIG.canyonWidth / 2;
 
-            // Create canyon walls using fractal displacement
-            const wallGeometry = new THREE.PlaneGeometry(
-                CONFIG.canyonHeight,
-                CONFIG.segmentLength,
-                resolution,
-                resolution
-            );
+            // Get canyon center for this segment
+            const segmentCenterZ = zPosition - CONFIG.segmentLength / 2;
+            const canyonCenterX = getCanyonCenter(segmentCenterZ);
+            const crossSection = getCrossSectionShape(segmentCenterZ);
 
-            // Displace vertices for fractal appearance
-            const positions = wallGeometry.attributes.position;
-            for (let i = 0; i < positions.count; i++) {
-                const x = positions.getX(i);
-                const y = positions.getY(i);
-                const worldZ = zPosition + y;
+            // Create canyon geometry with varying cross-section
+            const leftWallGeo = new THREE.BufferGeometry();
+            const rightWallGeo = new THREE.BufferGeometry();
+            const floorGeo = new THREE.BufferGeometry();
 
-                // Fractal displacement
-                const displacement = noise.fbm(worldZ * 0.01, x * 0.05, CONFIG.lodLevel) * 8;
-                positions.setZ(i, displacement);
+            const segResZ = resolution;
+            const segResY = Math.floor(resolution / 2);
+            const segResX = resolution;
+
+            // Generate wall vertices
+            const leftVerts = [];
+            const rightVerts = [];
+            const floorVerts = [];
+            const leftNormals = [];
+            const rightNormals = [];
+            const floorNormals = [];
+
+            // Create walls with varying angle based on cross-section
+            for (let iz = 0; iz <= segResZ; iz++) {
+                const zFrac = iz / segResZ;
+                const z = zPosition - zFrac * CONFIG.segmentLength;
+                const localCenterX = getCanyonCenter(z);
+                const localCrossSection = getCrossSectionShape(z);
+
+                for (let iy = 0; iy <= segResY; iy++) {
+                    const yFrac = iy / segResY;
+                    const y = yFrac * CONFIG.canyonHeight;
+
+                    // Wall angle: V-shape has angled walls, U-shape has more vertical walls
+                    // But never perfectly vertical
+                    const baseAngle = 0.15 + localCrossSection * 0.6; // 0.15 to 0.75
+                    const wallAngle = baseAngle + noise.fbm(z * 0.01, y * 0.02, 3) * 0.1;
+
+                    // Left wall X position (wall leans inward at bottom for V, straighter for U)
+                    const leftBaseX = localCenterX - halfWidth + (1 - yFrac) * halfWidth * (1 - wallAngle);
+                    const leftDisplacement = noise.fbm(z * 0.01, y * 0.05, CONFIG.lodLevel) * 8;
+                    const leftX = leftBaseX - leftDisplacement;
+
+                    // Right wall X position
+                    const rightBaseX = localCenterX + halfWidth - (1 - yFrac) * halfWidth * (1 - wallAngle);
+                    const rightDisplacement = noise.fbm(z * 0.01 + 100, y * 0.05, CONFIG.lodLevel) * 8;
+                    const rightX = rightBaseX + rightDisplacement;
+
+                    leftVerts.push(leftX, y, z);
+                    rightVerts.push(rightX, y, z);
+                }
             }
-            wallGeometry.computeVertexNormals();
 
-            // Wall materials with rock texture simulation
+            // Create floor with varying shape
+            for (let iz = 0; iz <= segResZ; iz++) {
+                const zFrac = iz / segResZ;
+                const z = zPosition - zFrac * CONFIG.segmentLength;
+                const localCenterX = getCanyonCenter(z);
+                const localCrossSection = getCrossSectionShape(z);
+
+                for (let ix = 0; ix <= segResX; ix++) {
+                    const xFrac = ix / segResX;
+                    const localX = (xFrac - 0.5) * CONFIG.canyonWidth;
+                    const x = localCenterX + localX;
+
+                    // Floor shape: V has pointed bottom, U has flatter bottom
+                    const distFromCenter = Math.abs(localX) / (halfWidth);
+
+                    // River channel
+                    const riverWidth = 0.15;
+                    let height;
+
+                    if (distFromCenter < riverWidth) {
+                        // River bed - always low
+                        height = -2 - noise.fbm(z * 0.02, x * 0.1, 3) * 0.5;
+                    } else {
+                        // Floor rises from center
+                        // V-shape: steep rise, U-shape: gradual then steep
+                        const uShapeFloor = Math.pow(distFromCenter, 0.5) * 8;
+                        const vShapeFloor = distFromCenter * 15;
+                        const baseHeight = vShapeFloor * (1 - localCrossSection) + uShapeFloor * localCrossSection;
+
+                        // Add fractal detail - floor is never perfectly flat
+                        const detail = noise.fbm(z * 0.01, x * 0.02, CONFIG.lodLevel) * 3;
+                        height = baseHeight + detail;
+                    }
+
+                    floorVerts.push(x, height, z);
+                }
+            }
+
+            // Create indices for walls
+            const leftIndices = [];
+            const rightIndices = [];
+            for (let iz = 0; iz < segResZ; iz++) {
+                for (let iy = 0; iy < segResY; iy++) {
+                    const a = iz * (segResY + 1) + iy;
+                    const b = a + 1;
+                    const c = a + (segResY + 1);
+                    const d = c + 1;
+
+                    leftIndices.push(a, b, c);
+                    leftIndices.push(b, d, c);
+
+                    rightIndices.push(a, c, b);
+                    rightIndices.push(b, c, d);
+                }
+            }
+
+            // Create indices for floor
+            const floorIndices = [];
+            for (let iz = 0; iz < segResZ; iz++) {
+                for (let ix = 0; ix < segResX; ix++) {
+                    const a = iz * (segResX + 1) + ix;
+                    const b = a + 1;
+                    const c = a + (segResX + 1);
+                    const d = c + 1;
+
+                    floorIndices.push(a, c, b);
+                    floorIndices.push(b, c, d);
+                }
+            }
+
+            // Set geometry attributes
+            leftWallGeo.setAttribute('position', new THREE.Float32BufferAttribute(leftVerts, 3));
+            leftWallGeo.setIndex(leftIndices);
+            leftWallGeo.computeVertexNormals();
+
+            rightWallGeo.setAttribute('position', new THREE.Float32BufferAttribute(rightVerts, 3));
+            rightWallGeo.setIndex(rightIndices);
+            rightWallGeo.computeVertexNormals();
+
+            floorGeo.setAttribute('position', new THREE.Float32BufferAttribute(floorVerts, 3));
+            floorGeo.setIndex(floorIndices);
+            floorGeo.computeVertexNormals();
+
+            // Materials
             const wallMaterial = new THREE.MeshPhongMaterial({
                 color: 0x8B4513,
                 flatShading: true,
                 side: THREE.DoubleSide
             });
 
-            // Left wall
-            const leftWall = new THREE.Mesh(wallGeometry.clone(), wallMaterial);
-            leftWall.rotation.y = Math.PI / 2;
-            leftWall.position.set(-halfWidth, CONFIG.canyonHeight / 2, zPosition - CONFIG.segmentLength / 2);
-            leftWall.receiveShadow = true;
-            leftWall.castShadow = true;
-            segment.add(leftWall);
-
-            // Right wall
-            const rightWall = new THREE.Mesh(wallGeometry.clone(), wallMaterial);
-            rightWall.rotation.y = -Math.PI / 2;
-            rightWall.position.set(halfWidth, CONFIG.canyonHeight / 2, zPosition - CONFIG.segmentLength / 2);
-            rightWall.receiveShadow = true;
-            rightWall.castShadow = true;
-            segment.add(rightWall);
-
-            // Floor
-            const floorGeo = new THREE.PlaneGeometry(
-                CONFIG.canyonWidth,
-                CONFIG.segmentLength,
-                resolution,
-                resolution
-            );
-
-            const floorPositions = floorGeo.attributes.position;
-            for (let i = 0; i < floorPositions.count; i++) {
-                const x = floorPositions.getX(i);
-                const y = floorPositions.getY(i);
-                const worldZ = zPosition + y;
-
-                // Create river channel in the middle
-                const riverWidth = 15;
-                const distFromCenter = Math.abs(x);
-                let height = 0;
-
-                if (distFromCenter < riverWidth) {
-                    // River bed
-                    height = -2 - noise.fbm(worldZ * 0.02, x * 0.1, 3) * 0.5;
-                } else {
-                    // Rocky floor
-                    height = noise.fbm(worldZ * 0.01, x * 0.02, CONFIG.lodLevel) * 5;
-                }
-
-                floorPositions.setZ(i, height);
-            }
-            floorGeo.computeVertexNormals();
-
             const floorMaterial = new THREE.MeshPhongMaterial({
                 color: 0x654321,
                 flatShading: true
             });
 
+            // Create meshes
+            const leftWall = new THREE.Mesh(leftWallGeo, wallMaterial);
+            leftWall.receiveShadow = true;
+            leftWall.castShadow = true;
+            segment.add(leftWall);
+
+            const rightWall = new THREE.Mesh(rightWallGeo, wallMaterial);
+            rightWall.receiveShadow = true;
+            rightWall.castShadow = true;
+            segment.add(rightWall);
+
             const floor = new THREE.Mesh(floorGeo, floorMaterial);
-            floor.rotation.x = -Math.PI / 2;
-            floor.position.set(0, 0, zPosition - CONFIG.segmentLength / 2);
             floor.receiveShadow = true;
             segment.add(floor);
 
-            // River
-            const riverGeo = new THREE.PlaneGeometry(12, CONFIG.segmentLength, 8, resolution);
+            // River (follows canyon center)
+            const riverVerts = [];
+            const riverIndices = [];
+            for (let iz = 0; iz <= segResZ; iz++) {
+                const zFrac = iz / segResZ;
+                const z = zPosition - zFrac * CONFIG.segmentLength;
+                const localCenterX = getCanyonCenter(z);
+
+                riverVerts.push(localCenterX - 6, -1.5, z);
+                riverVerts.push(localCenterX + 6, -1.5, z);
+            }
+
+            for (let iz = 0; iz < segResZ; iz++) {
+                const a = iz * 2;
+                const b = a + 1;
+                const c = a + 2;
+                const d = a + 3;
+                riverIndices.push(a, c, b);
+                riverIndices.push(b, c, d);
+            }
+
+            const riverGeo = new THREE.BufferGeometry();
+            riverGeo.setAttribute('position', new THREE.Float32BufferAttribute(riverVerts, 3));
+            riverGeo.setIndex(riverIndices);
+            riverGeo.computeVertexNormals();
+
             const riverMaterial = new THREE.MeshPhongMaterial({
                 color: 0x1E90FF,
                 transparent: true,
@@ -641,13 +821,11 @@
             });
 
             const river = new THREE.Mesh(riverGeo, riverMaterial);
-            river.rotation.x = -Math.PI / 2;
-            river.position.set(0, -1.5, zPosition - CONFIG.segmentLength / 2);
             segment.add(river);
 
-            // Add rings randomly
-            if (Math.random() < CONFIG.ringFrequency / 10) {
-                createRing(segment, zPosition);
+            // Add rings randomly (only if frequency > 0)
+            if (CONFIG.ringFrequency > 0 && Math.random() < CONFIG.ringFrequency / 10) {
+                createRing(segment, zPosition, canyonCenterX);
             }
 
             scene.add(segment);
@@ -656,7 +834,7 @@
             return segment;
         }
 
-        function createRing(parent, zPosition) {
+        function createRing(parent, zPosition, canyonCenterX) {
             const ringGeo = new THREE.TorusGeometry(5, 0.5, 8, 24);
             const ringMat = new THREE.MeshPhongMaterial({
                 color: 0xFFD700,
@@ -666,10 +844,11 @@
 
             const ring = new THREE.Mesh(ringGeo, ringMat);
 
-            // Random position within canyon bounds
-            const x = (Math.random() - 0.5) * (CONFIG.canyonWidth - 20);
-            const y = 8 + Math.random() * (CONFIG.canyonHeight - 30);
+            // Random position within canyon bounds, centered on canyon path
             const z = zPosition - Math.random() * CONFIG.segmentLength;
+            const localCenterX = getCanyonCenter(z);
+            const x = localCenterX + (Math.random() - 0.5) * (CONFIG.canyonWidth - 40);
+            const y = 10 + Math.random() * (CONFIG.canyonHeight - 40);
 
             ring.position.set(x, y, z);
             ring.rotation.y = Math.PI / 2;
@@ -705,10 +884,11 @@
             const wings = new THREE.Mesh(wingGeo, wingMat);
             enemyGroup.add(wings);
 
-            // Position enemy ahead of player
-            const x = (Math.random() - 0.5) * (CONFIG.canyonWidth - 30);
-            const y = 10 + Math.random() * 30;
+            // Position enemy ahead of player, following canyon path
             const z = playerZ - 300 - Math.random() * 200;
+            const canyonCenterX = getCanyonCenter(z);
+            const x = canyonCenterX + (Math.random() - 0.5) * (CONFIG.canyonWidth - 30);
+            const y = 10 + Math.random() * 30;
 
             enemyGroup.position.set(x, y, z);
             enemyGroup.userData.health = 30;
@@ -804,12 +984,14 @@
             CONFIG.lodLevel = parseInt(document.getElementById('canyon-lod').value);
             CONFIG.ringFrequency = parseInt(document.getElementById('ring-frequency').value);
             CONFIG.flightSpeed = parseFloat(document.getElementById('flight-speed').value);
+            CONFIG.stabilizationEnabled = document.getElementById('stabilization-enabled').checked;
             CONFIG.enemiesEnabled = document.getElementById('enemies-enabled').checked;
             CONFIG.enemyDifficulty = parseInt(document.getElementById('enemy-difficulty').value);
 
             // Update lighting and skybox
             updateSkybox();
             setupLighting();
+            createFogPlanes();
 
             // Regenerate canyon with new LOD
             regenerateCanyon();
@@ -839,6 +1021,7 @@
             playerZ = 0;
             pitch = 0;
             roll = 0;
+            yaw = 0;
 
             // Reset aircraft
             aircraft.position.set(0, 15, 0);
@@ -868,16 +1051,30 @@
 
         function checkCollisions() {
             const playerPos = aircraft.position;
-            const halfWidth = CONFIG.canyonWidth / 2 - 5;
+            const canyonCenterX = getCanyonCenter(playerPos.z);
+            const crossSection = getCrossSectionShape(playerPos.z);
 
-            // Wall collision
-            if (Math.abs(playerPos.x) > halfWidth) {
+            // Calculate local position relative to canyon center
+            const localX = playerPos.x - canyonCenterX;
+            const halfWidth = CONFIG.canyonWidth / 2;
+
+            // Wall collision - account for sloped walls
+            const yFrac = playerPos.y / CONFIG.canyonHeight;
+            const baseAngle = 0.15 + crossSection * 0.6;
+            const effectiveHalfWidth = halfWidth - (1 - yFrac) * halfWidth * (1 - baseAngle) - 8;
+
+            if (Math.abs(localX) > effectiveHalfWidth) {
                 triggerDeath();
                 return;
             }
 
-            // Floor collision (approximate)
-            if (playerPos.y < 3) {
+            // Floor collision - account for V/U shape
+            const distFromCenter = Math.abs(localX) / halfWidth;
+            const uShapeFloor = Math.pow(distFromCenter, 0.5) * 8;
+            const vShapeFloor = distFromCenter * 15;
+            const floorHeight = vShapeFloor * (1 - crossSection) + uShapeFloor * crossSection + 5;
+
+            if (playerPos.y < floorHeight) {
                 triggerDeath();
                 return;
             }
@@ -946,15 +1143,21 @@
             // Control input
             if (keys['w']) pitch = Math.max(pitch - 2 * delta, -0.8);
             else if (keys['s']) pitch = Math.min(pitch + 2 * delta, 0.8);
-            else pitch *= 0.95;
+            else if (CONFIG.stabilizationEnabled) pitch *= 0.95;
 
             if (keys['a']) roll = Math.max(roll - 2 * delta, -1.0);
             else if (keys['d']) roll = Math.min(roll + 2 * delta, 1.0);
-            else roll *= 0.95;
+            else if (CONFIG.stabilizationEnabled) roll *= 0.95;
 
             // Apply rotation
             aircraft.rotation.x = pitch;
             aircraft.rotation.z = -roll;
+
+            // Yaw based on roll (banking turns)
+            if (!CONFIG.stabilizationEnabled) {
+                yaw += roll * delta * 0.5;
+                aircraft.rotation.y = yaw;
+            }
 
             // Calculate movement direction
             const forward = new THREE.Vector3(0, 0, -1);
@@ -964,15 +1167,13 @@
             const speed = 50 * CONFIG.flightSpeed * delta;
             aircraft.position.add(forward.multiplyScalar(speed));
 
-            // Update position based on pitch
+            // Update position based on pitch and roll
             aircraft.position.y += -pitch * 30 * delta;
             aircraft.position.x += roll * 30 * delta;
 
-            // Clamp position
-            aircraft.position.x = Math.max(-CONFIG.canyonWidth/2 + 5,
-                Math.min(CONFIG.canyonWidth/2 - 5, aircraft.position.x));
-            aircraft.position.y = Math.max(3,
-                Math.min(CONFIG.canyonHeight - 5, aircraft.position.y));
+            // Clamp vertical position only
+            const canyonCenterX = getCanyonCenter(aircraft.position.z);
+            aircraft.position.y = Math.max(3, Math.min(CONFIG.canyonHeight - 5, aircraft.position.y));
 
             playerZ = aircraft.position.z;
 
@@ -983,10 +1184,17 @@
             }
 
             // Update camera to follow aircraft
-            camera.position.x = aircraft.position.x * 0.5;
+            const lookAheadZ = aircraft.position.z - 50;
+            const lookAheadCenterX = getCanyonCenter(lookAheadZ);
+
+            camera.position.x = aircraft.position.x * 0.7 + canyonCenterX * 0.3;
             camera.position.y = aircraft.position.y + 5;
             camera.position.z = aircraft.position.z + 25;
-            camera.lookAt(aircraft.position.x, aircraft.position.y, aircraft.position.z - 50);
+            camera.lookAt(
+                aircraft.position.x * 0.5 + lookAheadCenterX * 0.5,
+                aircraft.position.y,
+                lookAheadZ
+            );
         }
 
         function updateCanyon() {
@@ -1092,6 +1300,7 @@
                 updateCanyon();
                 updateEnemies(delta);
                 updateBullets(delta);
+                updateFogPlanes();
                 checkCollisions();
             }
 
