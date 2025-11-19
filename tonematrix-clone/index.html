@@ -12,7 +12,7 @@
         .editor-title { color: #00d4aa; font-size: 14px; font-weight: 500; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 15px; }
         .editor-section { margin-bottom: 20px; }
         .editor-section-title { color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-        .instrument-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; max-height: 200px; overflow-y: auto; }
+        .instrument-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; max-height: 250px; overflow-y: auto; }
         .instrument-item { display: flex; align-items: center; justify-content: space-between; padding: 8px; background: #1a1a1a; border-radius: 4px; cursor: pointer; font-size: 11px; }
         .instrument-item:hover { background: #2a2a2a; }
         .instrument-item.selected { background: #00d4aa; color: #000; }
@@ -28,7 +28,7 @@
         .wave-param { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 10px; }
         .wave-param label { color: #888; flex: 1; }
         .wave-param input[type="range"] { width: 80px; accent-color: #00d4aa; }
-        .wave-param input[type="checkbox"] { accent-color: #00d4aa; }
+        .wave-param input[type="range"].large { width: 120px; }
         .wave-param-value { color: #00d4aa; min-width: 35px; text-align: right; }
         .param-section { border-top: 1px solid #222; padding-top: 10px; margin-top: 10px; }
         .param-section-title { color: #666; font-size: 9px; text-transform: uppercase; margin-bottom: 8px; }
@@ -48,10 +48,14 @@
         .tempo-control select { background: #1a1a1a; color: #00d4aa; border: 1px solid #00d4aa; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
 
         .grids-container { display: flex; flex-direction: column; gap: 15px; }
-        .matrix-section { display: flex; flex-direction: row; align-items: flex-start; gap: 4px; }
-        .matrix-column { display: flex; flex-direction: column; gap: 4px; }
+        .matrix-section { display: flex; flex-direction: column; gap: 4px; }
+        .matrix-section.collapsed .matrix-wrapper, .matrix-section.collapsed .clone-buttons-row { display: none; }
+        .matrix-section.muted { opacity: 0.5; }
         .matrix-header { display: flex; align-items: center; gap: 8px; padding-left: 7px; margin-bottom: 2px; }
         .instrument-select { background: #1a1a1a; color: #00d4aa; border: 1px solid #333; padding: 3px 6px; border-radius: 3px; font-size: 10px; cursor: pointer; }
+        .track-btn { background: transparent; border: none; color: #666; cursor: pointer; font-size: 10px; padding: 2px 4px; }
+        .track-btn:hover { color: #00d4aa; }
+        .track-btn.active { color: #00d4aa; }
         .remove-grid-btn { background: transparent; border: none; color: #666; cursor: pointer; font-size: 12px; padding: 2px 6px; }
         .remove-grid-btn:hover { color: #ff4444; }
         .matrix-wrapper { position: relative; padding: 6px; background: #0a0a0a; border-radius: 4px; }
@@ -61,8 +65,10 @@
         .cell.active { background: var(--instrument-color, #00d4aa); box-shadow: 0 0 8px var(--instrument-color, #00d4aa), 0 0 15px var(--instrument-glow, rgba(0, 212, 170, 0.5)); }
         .cell.column-highlight { background: #2a2a2a; }
         .cell.active.column-highlight { background: var(--instrument-highlight, #00ffcc); box-shadow: 0 0 12px var(--instrument-highlight, #00ffcc), 0 0 20px var(--instrument-glow, rgba(0, 255, 204, 0.7)); }
+        .cell.hover-highlight { background: #232323; }
+        .cell.active.hover-highlight { filter: brightness(0.9); }
 
-        .clone-buttons { display: flex; flex-direction: column; gap: 1px; padding-top: 24px; }
+        .clone-buttons-row { display: flex; gap: 1px; padding-left: 7px; height: 14px; }
         .clone-btn { width: 14px; height: 14px; border: none; border-radius: 1px; cursor: pointer; font-size: 6px; font-weight: bold; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; background: var(--instrument-color, #00d4aa); color: #000; }
         .clone-btn:hover { transform: scale(1.1); }
         .clone-spacer { width: 14px; height: 14px; }
@@ -86,10 +92,6 @@
         .modal-btn-primary { background: #00d4aa; color: #000; }
         .modal-btn-secondary { background: #333; color: #fff; }
         .modal-btn:hover { opacity: 0.8; }
-
-        .spline-handle { position: absolute; width: 8px; height: 8px; background: #00d4aa; border-radius: 50%; cursor: move; transform: translate(-50%, -50%); }
-        .spline-handle:hover { background: #00ffcc; transform: translate(-50%, -50%) scale(1.2); }
-        .spline-handle.selected { background: #fff; }
     </style>
 </head>
 <body>
@@ -124,13 +126,8 @@
                     <div class="param-section-title">Noise</div>
                     <div class="wave-param">
                         <label>Amount</label>
-                        <input type="range" id="noiseAmount" min="0" max="100" value="0">
+                        <input type="range" class="large" id="noiseAmount" min="0" max="100" value="0">
                         <span class="wave-param-value" id="noiseAmountValue">0%</span>
-                    </div>
-                    <div class="wave-param">
-                        <label>Dynamic</label>
-                        <input type="checkbox" id="noiseDynamic">
-                        <span class="wave-param-value" style="font-size: 8px;">per note</span>
                     </div>
                 </div>
                 <div class="param-section">
@@ -209,43 +206,47 @@
         const ROWS = 18, COLS = 64;
         const grids = [];
         let gridCounter = 0;
+        let hoveredColumn = -1;
 
-        // Extended pentatonic scale (18 notes, added C3 and A2 at bottom)
         const frequencies = [
             1318.51, 1174.66, 1046.50, 880.00, 783.99, 659.26, 587.33, 523.25,
             440.00, 392.00, 329.63, 293.66, 261.63, 220.00, 196.00, 164.81,
-            130.81, 110.00  // C3, A2
+            130.81, 110.00
         ];
 
-        // Spline control points for waveform (x: 0-1, y: -1 to 1)
         let splinePoints = [];
         let selectedHandle = -1;
         let isDraggingHandle = false;
-
-        // Paint mode state
         let paintMode = null;
         let paintGridIndex = null;
 
-        // Default instruments including drums
+        // All instruments - editable ones first, then presets
         let instruments = [
-            { id: 'square', name: 'Square', spline: getPresetSpline('square'), noiseAmount: 0, noiseDynamic: false, attack: 10, decay: 300, volume: 50, editable: true },
-            { id: 'sine', name: 'Sine', spline: getPresetSpline('sine'), noiseAmount: 0, noiseDynamic: false, attack: 10, decay: 300, volume: 50, editable: true },
-            { id: 'triangle', name: 'Triangle', spline: getPresetSpline('triangle'), noiseAmount: 0, noiseDynamic: false, attack: 10, decay: 300, volume: 60, editable: true },
-            { id: 'sawtooth', name: 'Sawtooth', spline: getPresetSpline('sawtooth'), noiseAmount: 0, noiseDynamic: false, attack: 10, decay: 300, volume: 30, editable: true },
+            // Editable basic waveforms
+            { id: 'square', name: 'Square', spline: getPresetSpline('square'), noiseAmount: 0, attack: 10, decay: 300, volume: 50, editable: true },
+            { id: 'sine', name: 'Sine', spline: getPresetSpline('sine'), noiseAmount: 0, attack: 10, decay: 300, volume: 50, editable: true },
+            { id: 'triangle', name: 'Triangle', spline: getPresetSpline('triangle'), noiseAmount: 0, attack: 10, decay: 300, volume: 60, editable: true },
+            { id: 'sawtooth', name: 'Sawtooth', spline: getPresetSpline('sawtooth'), noiseAmount: 0, attack: 10, decay: 300, volume: 30, editable: true },
+            // Editable FM synths
+            { id: 'fm-bell', name: 'FM Bell', type: 'fm', fmRatio: 5, fmDepth: 200, attack: 5, decay: 500, volume: 40, editable: true },
+            { id: 'fm-bass', name: 'FM Bass', type: 'fm', fmRatio: 1, fmDepth: 300, attack: 5, decay: 200, volume: 60, editable: true },
+            // Editable other synths
+            { id: 'pad', name: 'Soft Pad', spline: getPresetSpline('sine'), noiseAmount: 5, attack: 50, decay: 800, volume: 40, editable: true },
+            { id: 'pluck', name: 'Pluck', spline: getPresetSpline('triangle'), noiseAmount: 10, attack: 2, decay: 150, volume: 55, editable: true },
+            { id: 'organ', name: 'Organ', spline: getPresetSpline('square'), noiseAmount: 0, attack: 10, decay: 400, volume: 45, editable: true },
+            // Non-editable preset waveforms
+            { id: 'pulse', name: 'Pulse', type: 'pulse', dutyCycle: 25, attack: 10, decay: 300, volume: 50, editable: false },
+            { id: 'noise', name: 'Noise', type: 'noise', attack: 1, decay: 100, volume: 50, editable: false },
+            // Non-editable drums
             { id: 'kick', name: 'Kick Drum', type: 'drum-kick', attack: 1, decay: 150, volume: 80, editable: false },
             { id: 'snare', name: 'Snare Drum', type: 'drum-snare', attack: 1, decay: 100, volume: 70, editable: false },
             { id: 'hihat', name: 'Hi-Hat', type: 'drum-hihat', attack: 1, decay: 50, volume: 50, editable: false },
             { id: 'clap', name: 'Clap', type: 'drum-clap', attack: 1, decay: 80, volume: 60, editable: false },
-            { id: 'tom', name: 'Tom', type: 'drum-tom', attack: 1, decay: 120, volume: 65, editable: false },
-            { id: 'fm-bell', name: 'FM Bell', type: 'fm', fmRatio: 5, fmDepth: 200, attack: 5, decay: 500, volume: 40, editable: true },
-            { id: 'fm-bass', name: 'FM Bass', type: 'fm', fmRatio: 1, fmDepth: 300, attack: 5, decay: 200, volume: 60, editable: true },
-            { id: 'pad', name: 'Soft Pad', spline: getPresetSpline('sine'), noiseAmount: 5, noiseDynamic: true, attack: 50, decay: 800, volume: 40, editable: true },
-            { id: 'pluck', name: 'Pluck', spline: getPresetSpline('triangle'), noiseAmount: 10, noiseDynamic: false, attack: 2, decay: 150, volume: 55, editable: true },
-            { id: 'organ', name: 'Organ', spline: getPresetSpline('square'), noiseAmount: 0, noiseDynamic: false, attack: 10, decay: 400, volume: 45, editable: true }
+            { id: 'tom', name: 'Tom', type: 'drum-tom', attack: 1, decay: 120, volume: 65, editable: false }
         ];
 
         let selectedInstrumentId = null, editingInstrument = null;
-        const cloneConfigs = [{ cols: 4, row: 3 }, { cols: 8, row: 7 }, { cols: 16, row: 17 }];
+        const cloneConfigs = [{ cols: 4, col: 3 }, { cols: 8, col: 7 }, { cols: 16, col: 15 }];
         const gridColors = ['grid-color-0', 'grid-color-1', 'grid-color-2', 'grid-color-3', 'grid-color-4', 'grid-color-5'];
 
         function getPresetSpline(type) {
@@ -287,7 +288,9 @@
                 index: gridIndex,
                 data: Array(ROWS).fill(null).map(() => Array(COLS).fill(false)),
                 instrumentId: 'square',
-                colorClass: colorClass
+                colorClass: colorClass,
+                muted: false,
+                collapsed: false
             });
             renderGrid(gridIndex, colorClass);
         }
@@ -301,6 +304,24 @@
 
             const header = document.createElement('div');
             header.className = 'matrix-header';
+
+            // Collapse button
+            const collapseBtn = document.createElement('button');
+            collapseBtn.className = 'track-btn';
+            collapseBtn.textContent = '▼';
+            collapseBtn.title = 'Collapse/Expand';
+            collapseBtn.addEventListener('click', () => toggleCollapse(gridIndex));
+            header.appendChild(collapseBtn);
+
+            // Mute button
+            const muteBtn = document.createElement('button');
+            muteBtn.className = 'track-btn';
+            muteBtn.textContent = 'M';
+            muteBtn.title = 'Mute';
+            muteBtn.id = `mute-${gridIndex}`;
+            muteBtn.addEventListener('click', () => toggleMute(gridIndex));
+            header.appendChild(muteBtn);
+
             const select = document.createElement('select');
             select.className = 'instrument-select';
             select.id = `instrument-select-${gridIndex}`;
@@ -316,9 +337,7 @@
                 header.appendChild(removeBtn);
             }
 
-            const matrixColumn = document.createElement('div');
-            matrixColumn.className = 'matrix-column';
-            matrixColumn.appendChild(header);
+            section.appendChild(header);
 
             const wrapper = document.createElement('div');
             wrapper.className = 'matrix-wrapper';
@@ -343,33 +362,74 @@
                         if (e.buttons === 1 && paintGridIndex === gridIndex) {
                             setCell(gridIndex, row, col, cell, paintMode);
                         }
+                        highlightColumn(col);
+                    });
+                    cell.addEventListener('mouseleave', () => {
+                        clearColumnHighlight();
                     });
                     matrix.appendChild(cell);
                 }
             }
 
             wrapper.appendChild(matrix);
-            matrixColumn.appendChild(wrapper);
-            section.appendChild(matrixColumn);
+            section.appendChild(wrapper);
 
-            const cloneButtons = document.createElement('div');
-            cloneButtons.className = 'clone-buttons';
-            for (let row = 0; row < ROWS; row++) {
-                const config = cloneConfigs.find(c => c.row === row);
+            // Clone buttons row below grid
+            const cloneRow = document.createElement('div');
+            cloneRow.className = 'clone-buttons-row';
+            for (let col = 0; col < COLS; col++) {
+                const config = cloneConfigs.find(c => c.col === col);
                 if (config) {
                     const btn = document.createElement('button');
                     btn.className = 'clone-btn';
                     btn.textContent = config.cols;
+                    btn.title = `Clone first ${config.cols} columns`;
                     btn.addEventListener('click', () => clonePattern(gridIndex, config.cols));
-                    cloneButtons.appendChild(btn);
+                    cloneRow.appendChild(btn);
                 } else {
                     const spacer = document.createElement('div');
                     spacer.className = 'clone-spacer';
-                    cloneButtons.appendChild(spacer);
+                    cloneRow.appendChild(spacer);
                 }
             }
-            section.appendChild(cloneButtons);
+            section.appendChild(cloneRow);
+
             container.appendChild(section);
+        }
+
+        function toggleCollapse(gridIndex) {
+            const grid = grids.find(g => g.index === gridIndex);
+            if (!grid) return;
+            grid.collapsed = !grid.collapsed;
+            const section = document.getElementById(`section-${gridIndex}`);
+            section.classList.toggle('collapsed', grid.collapsed);
+        }
+
+        function toggleMute(gridIndex) {
+            const grid = grids.find(g => g.index === gridIndex);
+            if (!grid) return;
+            grid.muted = !grid.muted;
+            const section = document.getElementById(`section-${gridIndex}`);
+            const btn = document.getElementById(`mute-${gridIndex}`);
+            section.classList.toggle('muted', grid.muted);
+            btn.classList.toggle('active', grid.muted);
+        }
+
+        function highlightColumn(col) {
+            if (hoveredColumn === col) return;
+            clearColumnHighlight();
+            hoveredColumn = col;
+            document.querySelectorAll(`.cell[data-col="${col}"]`).forEach(cell => {
+                cell.classList.add('hover-highlight');
+            });
+        }
+
+        function clearColumnHighlight() {
+            if (hoveredColumn < 0) return;
+            document.querySelectorAll('.cell.hover-highlight').forEach(cell => {
+                cell.classList.remove('hover-highlight');
+            });
+            hoveredColumn = -1;
         }
 
         function setCell(gridIndex, row, col, cell, value) {
@@ -450,6 +510,8 @@
             if (inst.type === 'drum-clap') { playClap(now, volume); return; }
             if (inst.type === 'drum-tom') { playTom(now, frequency, volume); return; }
             if (inst.type === 'fm') { playFM(inst, frequency, now, attack, decay, volume); return; }
+            if (inst.type === 'noise') { playNoise(now, attack, decay, volume); return; }
+            if (inst.type === 'pulse') { playPulse(inst, frequency, now, attack, decay, volume); return; }
 
             // Spline-based waveform
             const spline = inst.spline || getPresetSpline('sine');
@@ -460,7 +522,7 @@
             for (let i = 1; i < samples; i++) {
                 const t = i / samples;
                 let val = catmullRomSpline(spline, t);
-                if (inst.noiseAmount > 0 && !inst.noiseDynamic) {
+                if (inst.noiseAmount > 0) {
                     val += (Math.random() * 2 - 1) * (inst.noiseAmount / 100);
                 }
                 imag[i] = val * (1 / i);
@@ -473,21 +535,6 @@
             osc.setPeriodicWave(wave);
             osc.frequency.setValueAtTime(frequency, now);
             osc.connect(gain);
-
-            if (inst.noiseAmount > 0 && inst.noiseDynamic) {
-                const noiseGain = audioContext.createGain();
-                noiseGain.gain.value = volume * (inst.noiseAmount / 100);
-                const bufferSize = audioContext.sampleRate * (attack + decay);
-                const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
-                const data = buffer.getChannelData(0);
-                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-                const noise = audioContext.createBufferSource();
-                noise.buffer = buffer;
-                noise.connect(noiseGain);
-                noiseGain.connect(audioContext.destination);
-                noise.start(now);
-            }
-
             gain.connect(audioContext.destination);
             gain.gain.setValueAtTime(0, now);
             gain.gain.linearRampToValueAtTime(volume, now + attack);
@@ -589,6 +636,43 @@
             osc.stop(now + 0.15);
         }
 
+        function playNoise(now, attack, decay, volume) {
+            const bufferSize = audioContext.sampleRate * (attack + decay);
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            const noise = audioContext.createBufferSource();
+            const gain = audioContext.createGain();
+            noise.buffer = buffer;
+            noise.connect(gain);
+            gain.connect(audioContext.destination);
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(volume, now + attack);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + attack + decay);
+            noise.start(now);
+        }
+
+        function playPulse(inst, frequency, now, attack, decay, volume) {
+            const dutyCycle = (inst.dutyCycle || 50) / 100;
+            const real = new Float32Array(64);
+            const imag = new Float32Array(64);
+            for (let i = 1; i < 64; i++) {
+                imag[i] = (2 / (i * Math.PI)) * Math.sin(i * Math.PI * dutyCycle);
+            }
+            const wave = audioContext.createPeriodicWave(real, imag);
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            osc.setPeriodicWave(wave);
+            osc.frequency.setValueAtTime(frequency, now);
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(volume, now + attack);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + attack + decay);
+            osc.start(now);
+            osc.stop(now + attack + decay + 0.1);
+        }
+
         function playFM(inst, frequency, now, attack, decay, volume) {
             const modRatio = inst.fmRatio || 2;
             const modDepth = inst.fmDepth || 100;
@@ -615,6 +699,7 @@
         function playColumn(col) {
             document.querySelectorAll('.cell').forEach(cell => cell.classList.remove('column-highlight'));
             grids.forEach(grid => {
+                if (grid.muted) return;
                 const matrix = document.getElementById(`matrix-${grid.index}`);
                 if (!matrix) return;
                 const cells = matrix.querySelectorAll('.cell');
@@ -711,7 +796,6 @@
             document.getElementById('volumeValue').textContent = inst.volume + '%';
             document.getElementById('noiseAmount').value = inst.noiseAmount || 0;
             document.getElementById('noiseAmountValue').textContent = (inst.noiseAmount || 0) + '%';
-            document.getElementById('noiseDynamic').checked = inst.noiseDynamic || false;
             document.getElementById('fmParams').style.display = inst.type === 'fm' ? 'block' : 'none';
             if (inst.type === 'fm') {
                 document.getElementById('fmRatio').value = inst.fmRatio || 2;
@@ -739,7 +823,6 @@
                 name: 'New Instrument',
                 spline: getPresetSpline('sine'),
                 noiseAmount: 0,
-                noiseDynamic: false,
                 attack: 10,
                 decay: 300,
                 volume: 50,
@@ -756,13 +839,8 @@
             document.getElementById('volumeValue').textContent = '50%';
             document.getElementById('noiseAmount').value = 0;
             document.getElementById('noiseAmountValue').textContent = '0%';
-            document.getElementById('noiseDynamic').checked = false;
             document.getElementById('fmParams').style.display = 'none';
             drawWaveform();
-        }
-
-        function isNameUnique(name, excludeId) {
-            return !instruments.some(i => i.name.toLowerCase() === name.toLowerCase() && i.id !== excludeId);
         }
 
         function saveCurrentInstrument() {
@@ -771,7 +849,6 @@
             editingInstrument.name = name;
             editingInstrument.spline = [...splinePoints];
             editingInstrument.noiseAmount = parseInt(document.getElementById('noiseAmount').value);
-            editingInstrument.noiseDynamic = document.getElementById('noiseDynamic').checked;
             editingInstrument.attack = parseInt(document.getElementById('attack').value);
             editingInstrument.decay = parseInt(document.getElementById('decay').value);
             editingInstrument.volume = parseInt(document.getElementById('volume').value);
@@ -779,26 +856,16 @@
             const existingIdx = instruments.findIndex(i => i.id === editingInstrument.id);
             const nameExists = instruments.some(i => i.name.toLowerCase() === name.toLowerCase() && i.id !== editingInstrument.id);
 
-            if (existingIdx > -1 && nameExists) {
-                // Name conflict - find unique name
+            if (nameExists) {
                 let counter = 2;
                 let newName = name;
                 while (instruments.some(i => i.name.toLowerCase() === newName.toLowerCase() && i.id !== editingInstrument.id)) {
                     newName = `${name} ${counter++}`;
                 }
                 editingInstrument.name = newName;
-            } else if (existingIdx === -1 && nameExists) {
-                // New instrument with existing name
-                let counter = 2;
-                let newName = name;
-                while (instruments.some(i => i.name.toLowerCase() === newName.toLowerCase())) {
-                    newName = `${name} ${counter++}`;
-                }
-                editingInstrument.name = newName;
             }
 
             if (existingIdx > -1) {
-                // Show overwrite dialog
                 document.getElementById('saveModal').style.display = 'flex';
                 document.getElementById('saveModalText').textContent = `Update "${instruments[existingIdx].name}"?`;
                 document.getElementById('overwriteBtn').onclick = () => {
@@ -830,11 +897,6 @@
 
             canvas.addEventListener('mousedown', (e) => {
                 const rect = canvas.getBoundingClientRect();
-                const x = (e.clientX - rect.left) / rect.width;
-                const y = 1 - (e.clientY - rect.top) / rect.height;
-                const yVal = y * 2 - 1;
-
-                // Check if clicking on a handle
                 for (let i = 0; i < splinePoints.length; i++) {
                     const px = splinePoints[i].x * rect.width;
                     const py = (1 - (splinePoints[i].y + 1) / 2) * rect.height;
@@ -855,30 +917,18 @@
                 let y = 1 - (e.clientY - rect.top) / rect.height;
                 x = Math.max(0, Math.min(1, x));
                 y = Math.max(0, Math.min(1, y));
-
-                // Don't allow moving first/last x position
                 if (selectedHandle > 0 && selectedHandle < splinePoints.length - 1) {
                     splinePoints[selectedHandle].x = x;
                 }
                 splinePoints[selectedHandle].y = y * 2 - 1;
-
-                // Sort points by x
                 splinePoints.sort((a, b) => a.x - b.x);
-                selectedHandle = splinePoints.findIndex(p => p.x === x || (selectedHandle === 0 && p.x === 0) || (selectedHandle === splinePoints.length - 1 && p.x === 1));
-
                 drawWaveform();
             });
 
-            canvas.addEventListener('mouseup', () => {
-                isDraggingHandle = false;
-            });
-
-            canvas.addEventListener('mouseleave', () => {
-                isDraggingHandle = false;
-            });
+            canvas.addEventListener('mouseup', () => isDraggingHandle = false);
+            canvas.addEventListener('mouseleave', () => isDraggingHandle = false);
 
             canvas.addEventListener('dblclick', (e) => {
-                // Delete handle on double-click
                 if (selectedHandle > 0 && selectedHandle < splinePoints.length - 1 && splinePoints.length > 3) {
                     splinePoints.splice(selectedHandle, 1);
                     selectedHandle = -1;
@@ -889,7 +939,6 @@
 
         function addHandle() {
             if (splinePoints.length >= 20) return;
-            // Add in the middle
             const midIdx = Math.floor(splinePoints.length / 2);
             const x = (splinePoints[midIdx - 1].x + splinePoints[midIdx].x) / 2;
             const y = (splinePoints[midIdx - 1].y + splinePoints[midIdx].y) / 2;
@@ -908,7 +957,6 @@
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Grid
             ctx.strokeStyle = '#222';
             ctx.beginPath();
             ctx.moveTo(0, canvas.height / 2);
@@ -919,9 +967,8 @@
 
             const noiseAmount = editingInstrument ? (editingInstrument.noiseAmount || parseInt(document.getElementById('noiseAmount').value) || 0) : 0;
 
-            // Draw noise band
             if (noiseAmount > 0) {
-                ctx.fillStyle = 'rgba(0, 212, 170, 0.1)';
+                ctx.fillStyle = 'rgba(0, 212, 170, 0.15)';
                 ctx.beginPath();
                 for (let i = 0; i <= canvas.width; i++) {
                     const t = i / canvas.width;
@@ -942,7 +989,6 @@
                 ctx.fill();
             }
 
-            // Draw waveform
             ctx.strokeStyle = '#00d4aa';
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -955,7 +1001,6 @@
             }
             ctx.stroke();
 
-            // Draw handles
             splinePoints.forEach((p, i) => {
                 const x = p.x * canvas.width;
                 const y = canvas.height / 2 - p.y * (canvas.height / 2 - 5);
@@ -976,9 +1021,11 @@
             if (saved) {
                 try {
                     const loaded = JSON.parse(saved);
-                    // Merge with defaults, keeping locked instruments
                     const locked = instruments.filter(i => i.editable === false);
-                    instruments = [...locked, ...loaded.filter(l => !locked.some(d => d.id === l.id))];
+                    const editableDefaults = instruments.filter(i => i.editable !== false);
+                    const loadedIds = loaded.map(l => l.id);
+                    const defaults = editableDefaults.filter(d => !loadedIds.includes(d.id));
+                    instruments = [...defaults, ...loaded, ...locked];
                 } catch (e) {
                     console.error('Failed to load instruments', e);
                 }
@@ -1003,7 +1050,7 @@
                     const imported = JSON.parse(e.target.result);
                     if (Array.isArray(imported)) {
                         const locked = instruments.filter(i => i.editable === false);
-                        instruments = [...locked, ...imported];
+                        instruments = [...imported, ...locked];
                         saveInstruments();
                         renderInstrumentList();
                         updateAllInstrumentSelects();
