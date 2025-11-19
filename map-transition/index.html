@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Projection Transitions</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #fff;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin: 0 0 10px 0;
+            font-weight: normal;
+        }
+
+        #projection-name {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 20px;
+            height: 20px;
+        }
+
+        #map {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .sphere {
+            fill: #fff;
+            stroke: #000;
+            stroke-width: 0.5px;
+        }
+
+        .land {
+            fill: #222;
+        }
+
+        .boundary {
+            fill: none;
+            stroke: #fff;
+            stroke-width: 0.5px;
+        }
+
+        .graticule {
+            fill: none;
+            stroke: #777;
+            stroke-width: 0.5px;
+            stroke-opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <h1>Map Projection Transitions</h1>
+    <div id="projection-name"></div>
+    <svg id="map"></svg>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/d3-geo-projection.v4.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <script>
+        const width = 960;
+        const height = 500;
+
+        // Create SVG
+        const svg = d3.select("#map")
+            .attr("width", width)
+            .attr("height", height);
+
+        // Projection definitions with their parameters
+        const projections = [
+            {
+                name: "Aitoff",
+                projection: d3.geoAitoff()
+            },
+            {
+                name: "Albers",
+                projection: d3.geoAlbers().scale(150).rotate([0, 0])
+            },
+            {
+                name: "August",
+                projection: d3.geoAugust()
+            },
+            {
+                name: "Baker",
+                projection: d3.geoBaker()
+            },
+            {
+                name: "Boggs",
+                projection: d3.geoBoggs()
+            },
+            {
+                name: "Bromley",
+                projection: d3.geoBromley()
+            },
+            {
+                name: "Collignon",
+                projection: d3.geoCollignon()
+            },
+            {
+                name: "Craster Parabolic",
+                projection: d3.geoCraster()
+            },
+            {
+                name: "Eckert I",
+                projection: d3.geoEckert1()
+            },
+            {
+                name: "Eckert II",
+                projection: d3.geoEckert2()
+            },
+            {
+                name: "Eckert III",
+                projection: d3.geoEckert3()
+            },
+            {
+                name: "Eckert IV",
+                projection: d3.geoEckert4()
+            },
+            {
+                name: "Eckert V",
+                projection: d3.geoEckert5()
+            },
+            {
+                name: "Eckert VI",
+                projection: d3.geoEckert6()
+            },
+            {
+                name: "Eisenlohr",
+                projection: d3.geoEisenlohr()
+            },
+            {
+                name: "Equirectangular",
+                projection: d3.geoEquirectangular()
+            },
+            {
+                name: "Fahey",
+                projection: d3.geoFahey()
+            },
+            {
+                name: "Foucaut Sinusoidal",
+                projection: d3.geoFoucaut()
+            },
+            {
+                name: "Ginzburg IV",
+                projection: d3.geoGinzburg4()
+            },
+            {
+                name: "Ginzburg V",
+                projection: d3.geoGinzburg5()
+            },
+            {
+                name: "Ginzburg VI",
+                projection: d3.geoGinzburg6()
+            },
+            {
+                name: "Ginzburg VIII",
+                projection: d3.geoGinzburg8()
+            },
+            {
+                name: "Ginzburg IX",
+                projection: d3.geoGinzburg9()
+            },
+            {
+                name: "Gringorten",
+                projection: d3.geoGringorten()
+            },
+            {
+                name: "Hammer",
+                projection: d3.geoHammer()
+            },
+            {
+                name: "Hill",
+                projection: d3.geoHill()
+            },
+            {
+                name: "Homolosine",
+                projection: d3.geoHomolosine()
+            },
+            {
+                name: "Kavrayskiy VII",
+                projection: d3.geoKavrayskiy7()
+            },
+            {
+                name: "Lagrange",
+                projection: d3.geoLagrange()
+            },
+            {
+                name: "Larrivee",
+                projection: d3.geoLarrivee()
+            },
+            {
+                name: "Laskowski",
+                projection: d3.geoLaskowski()
+            },
+            {
+                name: "Loximuthal",
+                projection: d3.geoLoximuthal()
+            },
+            {
+                name: "Mercator",
+                projection: d3.geoMercator()
+            },
+            {
+                name: "Miller",
+                projection: d3.geoMiller()
+            },
+            {
+                name: "McBryde-Thomas Flat-Polar Parabolic",
+                projection: d3.geoMtFlatPolarParabolic()
+            },
+            {
+                name: "McBryde-Thomas Flat-Polar Quartic",
+                projection: d3.geoMtFlatPolarQuartic()
+            },
+            {
+                name: "McBryde-Thomas Flat-Polar Sinusoidal",
+                projection: d3.geoMtFlatPolarSinusoidal()
+            },
+            {
+                name: "Mollweide",
+                projection: d3.geoMollweide()
+            },
+            {
+                name: "Natural Earth",
+                projection: d3.geoNaturalEarth1()
+            },
+            {
+                name: "Nell-Hammer",
+                projection: d3.geoNellHammer()
+            },
+            {
+                name: "Orthographic",
+                projection: d3.geoOrthographic()
+            },
+            {
+                name: "Patterson",
+                projection: d3.geoPatterson()
+            },
+            {
+                name: "Polyconic",
+                projection: d3.geoPolyconic()
+            },
+            {
+                name: "Robinson",
+                projection: d3.geoRobinson()
+            },
+            {
+                name: "Sinusoidal",
+                projection: d3.geoSinusoidal()
+            },
+            {
+                name: "Sinu-Mollweide",
+                projection: d3.geoSinuMollweide()
+            },
+            {
+                name: "Times",
+                projection: d3.geoTimes()
+            },
+            {
+                name: "Van der Grinten",
+                projection: d3.geoVanDerGrinten()
+            },
+            {
+                name: "Van der Grinten IV",
+                projection: d3.geoVanDerGrinten4()
+            },
+            {
+                name: "Wagner IV",
+                projection: d3.geoWagner4()
+            },
+            {
+                name: "Wagner VI",
+                projection: d3.geoWagner6()
+            },
+            {
+                name: "Wagner VII",
+                projection: d3.geoWagner7()
+            },
+            {
+                name: "Winkel Tripel",
+                projection: d3.geoWinkel3()
+            }
+        ];
+
+        let currentIndex = 0;
+        let world;
+        let land;
+        let countries;
+
+        // Set up the initial projection
+        let currentProjection = projections[0].projection
+            .scale(150)
+            .translate([width / 2, height / 2])
+            .precision(0.1);
+
+        // Path generator
+        let path = d3.geoPath().projection(currentProjection);
+
+        // Graticule
+        const graticule = d3.geoGraticule();
+
+        // Create map elements
+        const sphere = svg.append("path")
+            .datum({type: "Sphere"})
+            .attr("class", "sphere");
+
+        const graticuleElement = svg.append("path")
+            .datum(graticule)
+            .attr("class", "graticule");
+
+        const landElement = svg.append("path")
+            .attr("class", "land");
+
+        const boundaryElement = svg.append("path")
+            .attr("class", "boundary");
+
+        // Update the projection name display
+        function updateProjectionName(name) {
+            document.getElementById("projection-name").textContent = name;
+        }
+
+        // Interpolate between two projections
+        function interpolatedProjection(projection0, projection1) {
+            let alpha = 0;
+
+            function interpolate(point) {
+                const p0 = projection0(point);
+                const p1 = projection1(point);
+                if (!p0 || !p1) return null;
+                return [
+                    (1 - alpha) * p0[0] + alpha * p1[0],
+                    (1 - alpha) * p0[1] + alpha * p1[1]
+                ];
+            }
+
+            interpolate.alpha = function(_) {
+                if (!arguments.length) return alpha;
+                alpha = +_;
+                return interpolate;
+            };
+
+            interpolate.stream = function(stream) {
+                let stream0 = projection0.stream(stream);
+                let stream1 = projection1.stream(stream);
+
+                return {
+                    point: function(x, y) {
+                        const p = interpolate([x, y]);
+                        if (p) stream.point(p[0], p[1]);
+                    },
+                    sphere: function() {
+                        stream.sphere();
+                    },
+                    lineStart: function() {
+                        stream.lineStart();
+                    },
+                    lineEnd: function() {
+                        stream.lineEnd();
+                    },
+                    polygonStart: function() {
+                        stream.polygonStart();
+                    },
+                    polygonEnd: function() {
+                        stream.polygonEnd();
+                    }
+                };
+            };
+
+            return interpolate;
+        }
+
+        // Update the map with current projection
+        function update() {
+            sphere.attr("d", path);
+            graticuleElement.attr("d", path);
+            landElement.attr("d", path);
+            boundaryElement.attr("d", path);
+        }
+
+        // Transition to the next projection
+        function transitionToNext() {
+            const nextIndex = (currentIndex + 1) % projections.length;
+            const currentProj = projections[currentIndex].projection
+                .scale(150)
+                .translate([width / 2, height / 2])
+                .precision(0);
+
+            const nextProj = projections[nextIndex].projection
+                .scale(150)
+                .translate([width / 2, height / 2])
+                .precision(0);
+
+            // Create interpolated projection
+            const interpolated = interpolatedProjection(currentProj, nextProj);
+            path.projection(interpolated);
+
+            // Get current and target rotations
+            const rotate0 = currentProj.rotate ? currentProj.rotate() : [0, 0, 0];
+            const rotate1 = nextProj.rotate ? nextProj.rotate() : [0, 0, 0];
+
+            // Animate the transition
+            d3.transition()
+                .duration(2500)
+                .tween("projection", function() {
+                    return function(t) {
+                        // Ease the transition
+                        const easedT = d3.easeCubicInOut(t);
+
+                        // Interpolate rotation
+                        const rotation = [
+                            rotate0[0] + (rotate1[0] - rotate0[0]) * easedT + easedT * 360,
+                            rotate0[1] + (rotate1[1] - rotate0[1]) * easedT,
+                            rotate0[2] + (rotate1[2] - rotate0[2]) * easedT
+                        ];
+
+                        // Apply rotation to both projections
+                        if (currentProj.rotate) currentProj.rotate([rotation[0] * (1 - easedT), rotation[1] * (1 - easedT), rotation[2]]);
+                        if (nextProj.rotate) nextProj.rotate([rotation[0] * easedT, rotation[1] * easedT, rotation[2]]);
+
+                        interpolated.alpha(easedT);
+                        update();
+                    };
+                })
+                .on("end", function() {
+                    currentIndex = nextIndex;
+                    currentProjection = nextProj;
+                    currentProjection.precision(0.1);
+                    path.projection(currentProjection);
+                    updateProjectionName(projections[currentIndex].name);
+                    update();
+
+                    // Schedule next transition
+                    setTimeout(transitionToNext, 1500);
+                });
+        }
+
+        // Load world data and start
+        d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(function(topology) {
+            world = topology;
+            land = topojson.feature(world, world.objects.land);
+            countries = topojson.mesh(world, world.objects.countries, function(a, b) { return a !== b; });
+
+            landElement.datum(land);
+            boundaryElement.datum(countries);
+
+            // Initial update
+            updateProjectionName(projections[0].name);
+            update();
+
+            // Start transitions
+            setTimeout(transitionToNext, 2000);
+        }).catch(function(error) {
+            console.error("Error loading world data:", error);
+            // Try alternative data source
+            d3.json("https://unpkg.com/world-atlas@2/countries-110m.json").then(function(topology) {
+                world = topology;
+                land = topojson.feature(world, world.objects.land);
+                countries = topojson.mesh(world, world.objects.countries, function(a, b) { return a !== b; });
+
+                landElement.datum(land);
+                boundaryElement.datum(countries);
+
+                updateProjectionName(projections[0].name);
+                update();
+                setTimeout(transitionToNext, 2000);
+            });
+        });
+    </script>
+</body>
+</html>
