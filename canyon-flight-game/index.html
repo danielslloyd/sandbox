@@ -224,7 +224,7 @@
             canyonHeight: 200,
             canyonDepth: 2000,
             segmentLength: 100,
-            visibleSegments: 20,
+            visibleSegments: 25,
             lodLevel: 5,
             ringFrequency: 3,
             flightSpeed: 1.0,
@@ -330,11 +330,17 @@
 
         // Get canyon center position at a given Z
         function getCanyonCenter(z) {
-            // Use noise to create winding path
-            const curve1 = pathNoise.noise2D(z * 0.003, 0) * 40;
-            const curve2 = pathNoise.noise2D(z * 0.008, 100) * 20;
-            const curve3 = pathNoise.noise2D(z * 0.015, 200) * 10;
-            return curve1 + curve2 + curve3;
+            // Create pronounced S-curves with varying radius and angle
+            // Primary large S-curves
+            const curve1 = pathNoise.noise2D(z * 0.0015, 0) * 80;
+            // Secondary curves for variation in turn radius
+            const curve2 = pathNoise.noise2D(z * 0.004, 100) * 40;
+            // Tertiary detail curves
+            const curve3 = pathNoise.noise2D(z * 0.01, 200) * 15;
+            // Extra variation in turn sharpness
+            const curve4 = Math.sin(z * 0.002 + pathNoise.noise2D(z * 0.001, 300) * 2) * 50;
+
+            return curve1 + curve2 + curve3 + curve4;
         }
 
         // Get cross-section shape factor (0 = V-shape, 1 = U-shape)
