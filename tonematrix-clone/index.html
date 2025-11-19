@@ -15,41 +15,55 @@
             background-color: #000;
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
             min-height: 100vh;
             font-family: 'Helvetica Neue', Arial, sans-serif;
-            overflow: hidden;
+            overflow-x: auto;
+            padding: 20px;
         }
 
         .container {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 20px;
+            gap: 15px;
+        }
+
+        .matrix-section {
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 4px;
+        }
+
+        .matrix-column {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         }
 
         .matrix-wrapper {
             position: relative;
-            padding: 10px;
+            padding: 6px;
             background: #0a0a0a;
             border-radius: 4px;
         }
 
         .matrix {
             display: grid;
-            grid-template-columns: repeat(16, 1fr);
-            gap: 2px;
+            grid-template-columns: repeat(64, 1fr);
+            gap: 1px;
             background: #111;
-            padding: 2px;
+            padding: 1px;
         }
 
         .cell {
-            width: 28px;
-            height: 28px;
+            width: 14px;
+            height: 14px;
             background: #1a1a1a;
-            border-radius: 2px;
+            border-radius: 1px;
             cursor: pointer;
-            transition: all 0.1s ease;
+            transition: all 0.05s ease;
             position: relative;
         }
 
@@ -57,39 +71,116 @@
             background: #2a2a2a;
         }
 
-        .cell.active {
+        /* Instrument 1 - Cyan/Teal */
+        .instrument-0 .cell.active {
             background: #00d4aa;
-            box-shadow: 0 0 15px #00d4aa, 0 0 30px rgba(0, 212, 170, 0.5);
+            box-shadow: 0 0 8px #00d4aa, 0 0 15px rgba(0, 212, 170, 0.5);
         }
 
-        .cell.playing {
-            background: #fff;
-            box-shadow: 0 0 20px #fff, 0 0 40px rgba(255, 255, 255, 0.8);
+        .instrument-0 .cell.active.column-highlight {
+            background: #00ffcc;
+            box-shadow: 0 0 12px #00ffcc, 0 0 20px rgba(0, 255, 204, 0.7);
+        }
+
+        /* Instrument 2 - Magenta/Pink */
+        .instrument-1 .cell.active {
+            background: #d400aa;
+            box-shadow: 0 0 8px #d400aa, 0 0 15px rgba(212, 0, 170, 0.5);
+        }
+
+        .instrument-1 .cell.active.column-highlight {
+            background: #ff00cc;
+            box-shadow: 0 0 12px #ff00cc, 0 0 20px rgba(255, 0, 204, 0.7);
+        }
+
+        /* Instrument 3 - Orange/Yellow */
+        .instrument-2 .cell.active {
+            background: #d4aa00;
+            box-shadow: 0 0 8px #d4aa00, 0 0 15px rgba(212, 170, 0, 0.5);
+        }
+
+        .instrument-2 .cell.active.column-highlight {
+            background: #ffcc00;
+            box-shadow: 0 0 12px #ffcc00, 0 0 20px rgba(255, 204, 0, 0.7);
         }
 
         .cell.column-highlight {
             background: #2a2a2a;
         }
 
-        .cell.active.column-highlight {
+        .clone-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            padding-top: 24px; /* Align with grid (label height + wrapper padding) */
+        }
+
+        .clone-btn {
+            width: 14px;
+            height: 14px;
+            border: none;
+            border-radius: 1px;
+            cursor: pointer;
+            font-size: 6px;
+            font-weight: bold;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .clone-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .clone-spacer {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* Clone button colors per instrument */
+        .instrument-0 .clone-btn {
+            background: #00d4aa;
+            color: #000;
+        }
+
+        .instrument-0 .clone-btn:hover {
             background: #00ffcc;
-            box-shadow: 0 0 20px #00ffcc, 0 0 40px rgba(0, 255, 204, 0.7);
+        }
+
+        .instrument-1 .clone-btn {
+            background: #d400aa;
+            color: #000;
+        }
+
+        .instrument-1 .clone-btn:hover {
+            background: #ff00cc;
+        }
+
+        .instrument-2 .clone-btn {
+            background: #d4aa00;
+            color: #000;
+        }
+
+        .instrument-2 .clone-btn:hover {
+            background: #ffcc00;
         }
 
         .controls {
             display: flex;
             gap: 15px;
             align-items: center;
+            margin-bottom: 10px;
         }
 
         .btn {
             background: #1a1a1a;
             color: #00d4aa;
             border: 1px solid #00d4aa;
-            padding: 10px 20px;
+            padding: 8px 16px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px;
             transition: all 0.2s ease;
         }
 
@@ -106,31 +197,52 @@
         .tempo-control {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
             color: #00d4aa;
+            font-size: 12px;
         }
 
         .tempo-control input {
-            width: 100px;
+            width: 80px;
             accent-color: #00d4aa;
         }
 
         .tempo-value {
-            min-width: 60px;
+            min-width: 40px;
             text-align: center;
         }
 
         .title {
             color: #00d4aa;
-            font-size: 24px;
+            font-size: 20px;
             font-weight: 300;
             letter-spacing: 4px;
             text-transform: uppercase;
         }
 
+        .instrument-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            padding-left: 7px;
+            margin-bottom: 2px;
+        }
+
+        .instrument-0 .instrument-label {
+            color: #00d4aa;
+        }
+
+        .instrument-1 .instrument-label {
+            color: #d400aa;
+        }
+
+        .instrument-2 .instrument-label {
+            color: #d4aa00;
+        }
+
         .instructions {
             color: #444;
-            font-size: 12px;
+            font-size: 10px;
             text-align: center;
         }
     </style>
@@ -139,13 +251,9 @@
     <div class="container">
         <h1 class="title">ToneMatrix</h1>
 
-        <div class="matrix-wrapper">
-            <div class="matrix" id="matrix"></div>
-        </div>
-
         <div class="controls">
             <button class="btn" id="playBtn">Play</button>
-            <button class="btn" id="clearBtn">Clear</button>
+            <button class="btn" id="clearBtn">Clear All</button>
             <div class="tempo-control">
                 <label for="tempo">BPM:</label>
                 <input type="range" id="tempo" min="60" max="240" value="120">
@@ -153,7 +261,37 @@
             </div>
         </div>
 
-        <p class="instructions">Click cells to create music. The sequence loops continuously.</p>
+        <div class="matrix-section instrument-0" id="section-0">
+            <div class="matrix-column">
+                <div class="instrument-label">Sine</div>
+                <div class="matrix-wrapper">
+                    <div class="matrix" id="matrix-0"></div>
+                </div>
+            </div>
+            <div class="clone-buttons" id="clone-buttons-0"></div>
+        </div>
+
+        <div class="matrix-section instrument-1" id="section-1">
+            <div class="matrix-column">
+                <div class="instrument-label">Triangle</div>
+                <div class="matrix-wrapper">
+                    <div class="matrix" id="matrix-1"></div>
+                </div>
+            </div>
+            <div class="clone-buttons" id="clone-buttons-1"></div>
+        </div>
+
+        <div class="matrix-section instrument-2" id="section-2">
+            <div class="matrix-column">
+                <div class="instrument-label">Sawtooth</div>
+                <div class="matrix-wrapper">
+                    <div class="matrix" id="matrix-2"></div>
+                </div>
+            </div>
+            <div class="clone-buttons" id="clone-buttons-2"></div>
+        </div>
+
+        <p class="instructions">Click cells to create music. Clone buttons copy the first 4/8/16 columns across the grid.</p>
     </div>
 
     <script>
@@ -164,13 +302,20 @@
         let intervalId = null;
         let tempo = 120;
 
-        // Grid state (16x16)
+        // Grid dimensions
         const ROWS = 16;
-        const COLS = 16;
-        const grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(false));
+        const COLS = 64;
+        const NUM_INSTRUMENTS = 3;
+
+        // Grid states for each instrument
+        const grids = Array(NUM_INSTRUMENTS).fill(null).map(() =>
+            Array(ROWS).fill(null).map(() => Array(COLS).fill(false))
+        );
+
+        // Instrument types
+        const instrumentTypes = ['sine', 'triangle', 'sawtooth'];
 
         // Pentatonic scale frequencies (C major pentatonic, spanning multiple octaves)
-        // From high to low (top to bottom on grid)
         const frequencies = [
             1318.51, // E6
             1174.66, // D6
@@ -190,21 +335,37 @@
             164.81   // E3
         ];
 
-        // Initialize the matrix
-        function initMatrix() {
-            const matrix = document.getElementById('matrix');
+        // Clone button configurations: [sourceColumns, buttonRow]
+        const cloneConfigs = [
+            { cols: 4, row: 3 },   // 4th row (0-indexed: 3)
+            { cols: 8, row: 7 },   // 8th row (0-indexed: 7)
+            { cols: 16, row: 15 }  // 16th row (0-indexed: 15)
+        ];
+
+        // Initialize all matrices
+        function initMatrices() {
+            for (let inst = 0; inst < NUM_INSTRUMENTS; inst++) {
+                initMatrix(inst);
+                initCloneButtons(inst);
+            }
+        }
+
+        // Initialize a single matrix
+        function initMatrix(instrumentIndex) {
+            const matrix = document.getElementById(`matrix-${instrumentIndex}`);
 
             for (let row = 0; row < ROWS; row++) {
                 for (let col = 0; col < COLS; col++) {
                     const cell = document.createElement('div');
                     cell.className = 'cell';
+                    cell.dataset.instrument = instrumentIndex;
                     cell.dataset.row = row;
                     cell.dataset.col = col;
 
-                    cell.addEventListener('click', () => toggleCell(row, col, cell));
+                    cell.addEventListener('click', () => toggleCell(instrumentIndex, row, col, cell));
                     cell.addEventListener('mouseenter', (e) => {
                         if (e.buttons === 1) {
-                            toggleCell(row, col, cell);
+                            toggleCell(instrumentIndex, row, col, cell);
                         }
                     });
 
@@ -213,14 +374,71 @@
             }
         }
 
+        // Initialize clone buttons for an instrument
+        function initCloneButtons(instrumentIndex) {
+            const container = document.getElementById(`clone-buttons-${instrumentIndex}`);
+
+            // Create spacer cells and buttons
+            for (let row = 0; row < ROWS; row++) {
+                const config = cloneConfigs.find(c => c.row === row);
+
+                if (config) {
+                    const btn = document.createElement('button');
+                    btn.className = 'clone-btn';
+                    btn.textContent = config.cols;
+                    btn.title = `Clone first ${config.cols} columns`;
+                    btn.addEventListener('click', () => clonePattern(instrumentIndex, config.cols));
+                    container.appendChild(btn);
+                } else {
+                    // Spacer
+                    const spacer = document.createElement('div');
+                    spacer.className = 'clone-spacer';
+                    container.appendChild(spacer);
+                }
+            }
+        }
+
+        // Clone pattern across the grid
+        function clonePattern(instrumentIndex, sourceCols) {
+            const grid = grids[instrumentIndex];
+
+            // Copy the first sourceCols columns across the rest
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = sourceCols; col < COLS; col++) {
+                    const sourceCol = col % sourceCols;
+                    grid[row][col] = grid[row][sourceCol];
+                }
+            }
+
+            // Update UI
+            updateGridUI(instrumentIndex);
+        }
+
+        // Update grid UI to match state
+        function updateGridUI(instrumentIndex) {
+            const matrix = document.getElementById(`matrix-${instrumentIndex}`);
+            const cells = matrix.querySelectorAll('.cell');
+
+            cells.forEach(cell => {
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
+
+                if (grids[instrumentIndex][row][col]) {
+                    cell.classList.add('active');
+                } else {
+                    cell.classList.remove('active');
+                }
+            });
+        }
+
         // Toggle cell state
-        function toggleCell(row, col, cell) {
-            grid[row][col] = !grid[row][col];
+        function toggleCell(instrumentIndex, row, col, cell) {
+            grids[instrumentIndex][row][col] = !grids[instrumentIndex][row][col];
             cell.classList.toggle('active');
 
             // Play sound on activation
-            if (grid[row][col] && audioContext) {
-                playNote(frequencies[row], 0.1);
+            if (grids[instrumentIndex][row][col] && audioContext) {
+                playNote(frequencies[row], 0.1, instrumentTypes[instrumentIndex]);
             }
         }
 
@@ -232,7 +450,7 @@
         }
 
         // Play a note
-        function playNote(frequency, duration) {
+        function playNote(frequency, duration, waveType = 'sine') {
             if (!audioContext) return;
 
             const oscillator = audioContext.createOscillator();
@@ -241,34 +459,43 @@
             oscillator.connect(gainNode);
             gainNode.connect(audioContext.destination);
 
-            oscillator.type = 'sine';
+            oscillator.type = waveType;
             oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
 
-            // Envelope
+            // Envelope - different volumes per instrument type
             const now = audioContext.currentTime;
+            let volume = 0.15;
+            if (waveType === 'triangle') volume = 0.2;
+            if (waveType === 'sawtooth') volume = 0.08;
+
             gainNode.gain.setValueAtTime(0, now);
-            gainNode.gain.linearRampToValueAtTime(0.3, now + 0.01);
+            gainNode.gain.linearRampToValueAtTime(volume, now + 0.01);
             gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
             oscillator.start(now);
             oscillator.stop(now + duration);
         }
 
-        // Play column
+        // Play column for all instruments
         function playColumn(col) {
             // Remove highlight from all cells
             document.querySelectorAll('.cell').forEach(cell => {
                 cell.classList.remove('column-highlight');
             });
 
-            // Highlight current column and play active notes
-            for (let row = 0; row < ROWS; row++) {
-                const cellIndex = row * COLS + col;
-                const cell = document.querySelectorAll('.cell')[cellIndex];
-                cell.classList.add('column-highlight');
+            // Process each instrument
+            for (let inst = 0; inst < NUM_INSTRUMENTS; inst++) {
+                const matrix = document.getElementById(`matrix-${inst}`);
+                const cells = matrix.querySelectorAll('.cell');
 
-                if (grid[row][col]) {
-                    playNote(frequencies[row], 0.5);
+                for (let row = 0; row < ROWS; row++) {
+                    const cellIndex = row * COLS + col;
+                    const cell = cells[cellIndex];
+                    cell.classList.add('column-highlight');
+
+                    if (grids[inst][row][col]) {
+                        playNote(frequencies[row], 0.5, instrumentTypes[inst]);
+                    }
                 }
             }
         }
@@ -304,17 +531,16 @@
             }
         }
 
-        // Clear grid
-        function clearGrid() {
-            for (let row = 0; row < ROWS; row++) {
-                for (let col = 0; col < COLS; col++) {
-                    grid[row][col] = false;
+        // Clear all grids
+        function clearAllGrids() {
+            for (let inst = 0; inst < NUM_INSTRUMENTS; inst++) {
+                for (let row = 0; row < ROWS; row++) {
+                    for (let col = 0; col < COLS; col++) {
+                        grids[inst][row][col] = false;
+                    }
                 }
+                updateGridUI(inst);
             }
-
-            document.querySelectorAll('.cell').forEach(cell => {
-                cell.classList.remove('active');
-            });
         }
 
         // Update tempo
@@ -335,11 +561,11 @@
 
         // Event listeners
         document.getElementById('playBtn').addEventListener('click', togglePlay);
-        document.getElementById('clearBtn').addEventListener('click', clearGrid);
+        document.getElementById('clearBtn').addEventListener('click', clearAllGrids);
         document.getElementById('tempo').addEventListener('input', (e) => updateTempo(e.target.value));
 
         // Initialize on load
-        window.addEventListener('load', initMatrix);
+        window.addEventListener('load', initMatrices);
 
         // Handle spacebar for play/pause
         document.addEventListener('keydown', (e) => {
