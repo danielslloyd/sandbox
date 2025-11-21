@@ -1,6 +1,8 @@
-# User data files (local only)
+# User data files (local only) - Python version
 user_data.json
 word_cache.json
+
+# Note: HTML version uses localStorage, no files to ignore
 
 # Python cache
 __pycache__/
@@ -24,3 +26,6 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Optional: Don't commit LLM definitions if they're large
+# data/llm_false_definitions.json

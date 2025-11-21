@@ -1,27 +1,47 @@
 # Vocabulary Learning Application
 
-A comprehensive vocabulary building tool with adaptive difficulty, spaced repetition, and flashcard modes.
+A comprehensive vocabulary building tool with adaptive difficulty, spaced repetition, and flashcard modes. Built with HTML, CSS, and JavaScript - **no installation required!**
 
 ## Features
 
 - **Adaptive Quiz Mode**: Dynamically adjusts difficulty to triangulate your vocabulary level
 - **Spaced Repetition**: Smart review system that schedules words based on your performance
 - **Flashcard Mode**: Review recently learned or difficult words
-- **Multi-user Support**: Track progress for multiple users locally
+- **Multi-user Support**: Track progress for multiple users locally (using localStorage)
 - **Etymology & Definitions**: Learn word origins and multiple definitions
 - **False Definition Generator**: Test your knowledge with plausible incorrect definitions
 - **Optional LLM Integration**: Use local Ollama for more convincing false definitions
+- **Offline-capable**: Works in your browser, data stored locally
 
-## Installation
+## Quick Start (HTML Version - Recommended)
 
-1. Clone the repository
-2. Install dependencies:
+1. Open `index.html` in your web browser
+2. That's it! No installation needed.
+
+**For local testing, you may need a simple HTTP server:**
+```bash
+# Python 3
+python -m http.server 8000
+
+# Python 2
+python -m SimpleHTTPServer 8000
+
+# Node.js
+npx http-server
+
+# Then open http://localhost:8000
+```
+
+## Alternative: Python CLI Version
+
+The original Python version is still available:
+
+1. Install dependencies:
    ```bash
-   cd Vocab
    pip install -r requirements.txt
    ```
 
-3. Run the application:
+2. Run the application:
    ```bash
    python vocab_app.py
    ```
@@ -46,8 +66,22 @@ For more convincing false definitions, you can use a local LLM via Ollama:
 
 1. Install Ollama from https://ollama.ai
 2. Pull a model: `ollama pull llama2`
-3. Ensure Ollama is running (default: http://localhost:11434)
-4. The app will automatically use LLM-generated false definitions when available
+3. Start Ollama: `ollama serve`
+4. Generate false definitions:
+   ```bash
+   # Generate for 100 random words
+   python scripts/generate_llm_definitions.py --count 100
+
+   # Generate for specific words
+   python scripts/generate_llm_definitions.py --words "ephemeral,ubiquitous,serendipity"
+
+   # Use a different model
+   python scripts/generate_llm_definitions.py --model mistral --count 50
+   ```
+5. The generated definitions are saved to `data/llm_false_definitions.json`
+6. Refresh the HTML app to use the new definitions automatically
+
+**Note:** The LLM script is completely separate from the HTML app. Run it once to generate definitions, and the HTML app will load them automatically.
 
 ## How It Works
 
@@ -71,13 +105,18 @@ Based on the SM-2 algorithm:
 
 ## Data Storage
 
-All user data is stored locally in `user_data.json` (gitignored):
-- Multiple user profiles supported
-- Progress tracked per word
-- Quiz history and statistics
-- Spaced repetition schedules
+### HTML Version
+All data is stored in your browser's localStorage:
+- **User Progress**: Multiple user profiles with stats
+- **Word Cache**: API responses cached locally
+- **Settings**: App preferences
 
-Word data is cached in `word_cache.json` (gitignored) to reduce API calls.
+Data persists between sessions and is private to your browser.
+
+### Python Version
+All user data is stored locally in JSON files (gitignored):
+- `user_data.json` - User progress and statistics
+- `word_cache.json` - Cached API responses
 
 ## API Used
 
@@ -89,13 +128,24 @@ Word data is cached in `word_cache.json` (gitignored) to reduce API calls.
 
 ```
 Vocab/
-├── vocab_app.py              # Main application
-├── words_by_frequency.json   # Word list sorted by frequency
-├── requirements.txt          # Python dependencies
-├── README.md                 # This file
-├── .gitignore               # Git ignore rules
-├── user_data.json           # User progress (gitignored)
-└── word_cache.json          # Cached word data (gitignored)
+├── index.html                      # Main HTML application (START HERE!)
+├── css/
+│   └── styles.css                  # Application styles
+├── js/
+│   ├── vocab-app.js                # Main application controller
+│   ├── word-database.js            # Word management & API
+│   ├── user-progress.js            # User tracking with localStorage
+│   └── spaced-repetition.js        # SR algorithm
+├── data/
+│   ├── words_by_frequency.json     # 3,500+ words sorted by frequency
+│   └── llm_false_definitions.json  # LLM-generated false defs (optional)
+├── scripts/
+│   └── generate_llm_definitions.py # LLM definition generator (optional)
+├── vocab_app.py                    # Python CLI version (alternative)
+├── demo.py                         # Python demo script
+├── requirements.txt                # Python dependencies
+├── README.md                       # This file
+└── .gitignore                      # Git ignore rules
 ```
 
 ## Tips for Learning
@@ -106,16 +156,56 @@ Vocab/
 4. **Read the etymology** to understand word origins and remember them better
 5. **Be consistent** - regular short sessions are more effective than long cramming
 
+## Technical Details
+
+### HTML/JavaScript Version
+- **No dependencies**: Pure JavaScript (ES6 modules)
+- **Responsive design**: Works on desktop, tablet, and mobile
+- **localStorage**: All data stored locally in browser
+- **Free Dictionary API**: Fetched via CORS-enabled endpoints
+- **Modular architecture**: Separate concerns (UI, data, algorithms)
+
+### Spaced Repetition Algorithm
+- Based on SM-2 algorithm
+- Ease factor: 1.3 - 4.0
+- Interval adjustment based on performance
+- Automatic scheduling of reviews
+
+### Browser Compatibility
+- Modern browsers (Chrome, Firefox, Safari, Edge)
+- Requires ES6 module support
+- localStorage required for data persistence
+
 ## Future Enhancements
 
 Potential features to add:
-- Export progress to CSV/JSON
-- Import custom word lists
-- Pronunciation audio
+- Export/import progress (CSV/JSON)
+- Custom word lists
+- Pronunciation audio (Web Speech API)
 - Word usage examples from real texts
 - Achievement system and gamification
-- Mobile app version
-- Cloud sync for multi-device support
+- Progressive Web App (PWA) for offline use
+- Dark mode theme
+- Cloud sync option (Firebase, etc.)
+
+## Troubleshooting
+
+### CORS Issues
+If you see CORS errors when fetching from the Dictionary API:
+- Use a local HTTP server (not file://)
+- Check browser console for specific errors
+- Some browsers block API calls from file:// URLs
+
+### localStorage Full
+If localStorage is full:
+- Clear browser data for the site
+- Export your progress first (Settings screen)
+
+### LLM Script Issues
+If the LLM script fails:
+- Ensure Ollama is running: `ollama serve`
+- Check the model is installed: `ollama list`
+- Try a different model: `--model mistral`
 
 ## Contributing
 
