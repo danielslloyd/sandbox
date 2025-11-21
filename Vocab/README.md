@@ -85,11 +85,31 @@ For more convincing false definitions, you can use a local LLM via Ollama:
 
 ## How It Works
 
-### Adaptive Difficulty
-The quiz starts at a moderate difficulty level and adjusts based on your performance:
-- Correct answers → harder words
-- Incorrect answers → easier words
-- Final score estimates your vocabulary level
+### Adaptive Difficulty with Statistical Inference
+
+The quiz uses **Bayesian-style statistical inference** to dynamically find your vocabulary frontier:
+
+**Starting Point:** 12th-grade level (~word 2000 in frequency-sorted list)
+
+**Algorithm:**
+- Maintains a probability distribution over your vocabulary level (mean + variance)
+- Each answer updates the belief using logistic regression-style inference
+- Samples next word from the "frontier" where P(knows word) ≈ 0.5
+- Balances exploration (testing uncertainty) with exploitation (honing in on frontier)
+- Uses Thompson sampling for optimal question selection
+
+**Dynamic Question Generation:**
+- No preset number of questions - continue until you want to stop!
+- Typically 15-25 questions for accurate frontier estimate
+- App suggests stopping when confidence is high (variance is low)
+- Real-time frontier updates after each question
+
+**Frontier Detection:**
+- Tracks mean (estimated frontier) and variance (uncertainty)
+- Correct answer above mean → boost estimate upward
+- Incorrect answer below mean → lower estimate downward
+- Variance decreases as algorithm becomes more confident
+- Consecutive streaks trigger larger adjustments
 
 ### Spaced Repetition Algorithm
 Based on the SM-2 algorithm:

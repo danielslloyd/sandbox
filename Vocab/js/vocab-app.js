@@ -5,6 +5,7 @@
 import { WordDatabase } from './word-database.js';
 import { UserProgress } from './user-progress.js';
 import { SpacedRepetition } from './spaced-repetition.js';
+import { VocabFrontierEstimator } from './frontier-estimator.js';
 
 class VocabApp {
     constructor() {
@@ -15,10 +16,11 @@ class VocabApp {
 
         // Quiz state
         this.quizState = {
-            questions: [],
+            frontierEstimator: null,
             currentQuestion: 0,
             score: 0,
-            difficultyRange: [0, 100]
+            totalAttempts: 0,
+            startTime: null
         };
 
         // Review state
@@ -82,6 +84,7 @@ class VocabApp {
 
         // Quiz screen
         document.getElementById('next-question-btn').addEventListener('click', () => this.nextQuestion());
+        document.getElementById('stop-quiz-btn').addEventListener('click', () => this.stopQuiz());
 
         // Review screen
         document.getElementById('review-next-btn').addEventListener('click', () => this.nextReviewWord());
@@ -93,11 +96,6 @@ class VocabApp {
 
         // Settings
         document.getElementById('reset-progress-btn').addEventListener('click', () => this.handleResetProgress());
-        document.getElementById('questions-per-quiz').addEventListener('change', (e) => {
-            const settings = this.userProgress.getSettings();
-            settings.questionsPerQuiz = parseInt(e.target.value);
-            this.userProgress.saveSettings(settings);
-        });
     }
 
     /**
@@ -180,18 +178,16 @@ class VocabApp {
     }
 
     /**
-     * Start adaptive quiz
+     * Start adaptive quiz with frontier estimation
      */
     async startAdaptiveQuiz() {
-        const userData = this.userProgress.users[this.currentUser];
-        const settings = this.userProgress.getSettings();
-        const numQuestions = settings.questionsPerQuiz;
-
+        // Initialize frontier estimator
         this.quizState = {
-            questions: [],
+            frontierEstimator: new VocabFrontierEstimator(this.wordDB.getWordCount()),
             currentQuestion: 0,
             score: 0,
-            difficultyRange: [...userData.currentDifficultyRange]
+            totalAttempts: 0,
+            startTime: Date.now()
         };
 
         this.showScreen('quiz');
@@ -199,26 +195,25 @@ class VocabApp {
     }
 
     /**
-     * Load next quiz question
+     * Load next quiz question using frontier estimator
      */
     async loadNextQuizQuestion() {
-        const settings = this.userProgress.getSettings();
-        const numQuestions = settings.questionsPerQuiz;
+        this.quizState.currentQuestion++;
 
-        if (this.quizState.currentQuestion >= numQuestions) {
-            this.showQuizResults();
-            return;
-        }
+        // Get stats for display
+        const stats = this.quizState.frontierEstimator.getStatistics();
 
         // Update progress display
         document.getElementById('quiz-question-number').textContent =
-            `Question ${this.quizState.currentQuestion + 1}/${numQuestions}`;
+            `Question ${this.quizState.currentQuestion}`;
         document.getElementById('quiz-score').textContent =
-            `Score: ${this.quizState.score}/${this.quizState.currentQuestion}`;
+            `Score: ${this.quizState.score}/${this.quizState.totalAttempts}`;
+        document.getElementById('quiz-frontier').textContent =
+            `Frontier: ~${stats.estimatedLevel} (±${stats.uncertainty})`;
 
-        // Get random word from current difficulty range
-        const [min, max] = this.quizState.difficultyRange;
-        const word = this.wordDB.getRandomWord(min, max);
+        // Get next word from frontier estimator
+        const wordIndex = this.quizState.frontierEstimator.getNextWordIndex();
+        const word = this.wordDB.getWordByIndex(wordIndex);
 
         // Show loading
         document.getElementById('quiz-word').textContent = 'Loading...';
@@ -256,7 +251,7 @@ class VocabApp {
             const btn = document.createElement('button');
             btn.className = 'option-btn';
             btn.textContent = option;
-            btn.addEventListener('click', () => this.handleQuizAnswer(index, correctIndex, word, wordData));
+            btn.addEventListener('click', () => this.handleQuizAnswer(index, correctIndex, word, wordData, wordIndex));
             optionsDiv.appendChild(btn);
         });
 
@@ -265,20 +260,28 @@ class VocabApp {
         document.getElementById('quiz-etymology').classList.add('hidden');
         document.getElementById('next-question-btn').classList.add('hidden');
 
-        // Store current question data
-        this.quizState.currentWordData = { word, wordData, correctIndex };
+        // Check if we should recommend stopping
+        if (this.quizState.frontierEstimator.shouldRecommendStop()) {
+            document.getElementById('stop-quiz-btn').textContent = '✓ Good job! Stop & See Results';
+            document.getElementById('stop-quiz-btn').classList.add('btn-success');
+            document.getElementById('stop-quiz-btn').classList.remove('btn-secondary');
+        }
     }
 
     /**
-     * Handle quiz answer
+     * Handle quiz answer with frontier estimation update
      */
-    handleQuizAnswer(selectedIndex, correctIndex, word, wordData) {
+    handleQuizAnswer(selectedIndex, correctIndex, word, wordData, wordIndex) {
         const correct = selectedIndex === correctIndex;
 
-        // Update score
+        // Update score and attempts
+        this.quizState.totalAttempts++;
         if (correct) {
             this.quizState.score++;
         }
+
+        // Update frontier estimator
+        this.quizState.frontierEstimator.updateBelief(wordIndex, correct);
 
         // Disable all option buttons
         const buttons = document.querySelectorAll('#quiz-options .option-btn');
@@ -304,23 +307,8 @@ class VocabApp {
             etymDiv.innerHTML = `<strong>Etymology:</strong> ${wordData.etymology}`;
         }
 
-        // Update user progress
+        // Update user progress for spaced repetition
         this.userProgress.updateWordProgress(this.currentUser, word, correct);
-
-        // Adjust difficulty
-        if (correct) {
-            this.quizState.difficultyRange[0] = Math.min(
-                this.wordDB.getWordCount() - 100,
-                this.quizState.difficultyRange[0] + 50
-            );
-            this.quizState.difficultyRange[1] = Math.min(
-                this.wordDB.getWordCount() - 1,
-                this.quizState.difficultyRange[1] + 50
-            );
-        } else {
-            this.quizState.difficultyRange[0] = Math.max(0, this.quizState.difficultyRange[0] - 30);
-            this.quizState.difficultyRange[1] = Math.max(100, this.quizState.difficultyRange[1] - 30);
-        }
 
         // Show next button
         document.getElementById('next-question-btn').classList.remove('hidden');
@@ -330,44 +318,113 @@ class VocabApp {
      * Next question
      */
     nextQuestion() {
-        this.quizState.currentQuestion++;
         this.loadNextQuizQuestion();
     }
 
     /**
-     * Show quiz results
+     * Stop quiz and show results
+     */
+    stopQuiz() {
+        this.showQuizResults();
+    }
+
+    /**
+     * Show quiz results with frontier analysis
      */
     showQuizResults() {
-        const settings = this.userProgress.getSettings();
-        const numQuestions = settings.questionsPerQuiz;
+        // Get frontier statistics
+        const stats = this.quizState.frontierEstimator.getStatistics();
+        const frontier = this.quizState.frontierEstimator.getFrontierRange();
 
-        // Update user's difficulty range and vocab level
-        this.userProgress.updateDifficultyRange(this.currentUser, this.quizState.difficultyRange);
-        const vocabLevel = Math.floor((this.quizState.difficultyRange[0] + this.quizState.difficultyRange[1]) / 2);
-        this.userProgress.updateVocabularyLevel(this.currentUser, vocabLevel);
+        // Calculate quiz duration
+        const duration = Math.floor((Date.now() - this.quizState.startTime) / 1000);
+        const minutes = Math.floor(duration / 60);
+        const seconds = duration % 60;
+
+        // Update user's vocabulary level
+        this.userProgress.updateVocabularyLevel(this.currentUser, stats.estimatedLevel);
+        this.userProgress.updateDifficultyRange(this.currentUser, [frontier.min, frontier.max]);
 
         // Add to history
         this.userProgress.addQuizToHistory(this.currentUser, {
             score: this.quizState.score,
-            total: numQuestions,
-            vocabLevel: vocabLevel
+            total: this.quizState.totalAttempts,
+            vocabLevel: stats.estimatedLevel,
+            frontierRange: frontier,
+            confidence: stats.confidence,
+            duration: duration
         });
 
-        // Hide quiz content
+        // Hide quiz content and frontier info
         document.getElementById('quiz-content').classList.add('hidden');
+        document.getElementById('quiz-frontier-info').classList.add('hidden');
 
         // Show results
         const resultsDiv = document.getElementById('quiz-results');
         resultsDiv.classList.remove('hidden');
 
-        const percentage = ((this.quizState.score / numQuestions) * 100).toFixed(0);
+        const percentage = ((this.quizState.score / this.quizState.totalAttempts) * 100).toFixed(1);
+
         const statsDiv = document.getElementById('quiz-final-stats');
         statsDiv.innerHTML = `
-            <div class="result-stat">Score: <strong>${this.quizState.score}/${numQuestions}</strong></div>
-            <div class="result-stat">Percentage: <strong>${percentage}%</strong></div>
-            <div class="result-stat">Updated Vocabulary Level: <strong>${vocabLevel}</strong></div>
-            <div class="result-stat">Difficulty Range: <strong>${this.quizState.difficultyRange[0]}-${this.quizState.difficultyRange[1]}</strong></div>
+            <div class="result-section">
+                <h3>📊 Performance</h3>
+                <div class="result-stat">Questions Answered: <strong>${this.quizState.totalAttempts}</strong></div>
+                <div class="result-stat">Correct: <strong>${this.quizState.score}</strong></div>
+                <div class="result-stat">Accuracy: <strong>${percentage}%</strong></div>
+                <div class="result-stat">Time: <strong>${minutes}:${seconds.toString().padStart(2, '0')}</strong></div>
+            </div>
+
+            <div class="result-section">
+                <h3>🎯 Vocabulary Frontier Analysis</h3>
+                <div class="result-stat">Estimated Frontier: <strong>${stats.estimatedLevel}</strong></div>
+                <div class="result-stat">Frontier Range: <strong>${frontier.min} - ${frontier.max}</strong></div>
+                <div class="result-stat">Uncertainty: <strong>±${frontier.uncertainty} words</strong></div>
+                <div class="result-stat">Confidence: <strong>${stats.confidence}%</strong></div>
+            </div>
+
+            <div class="result-section">
+                <h3>📈 Interpretation</h3>
+                <div class="interpretation">
+                    ${this.getInterpretation(stats.estimatedLevel, stats.confidence, percentage)}
+                </div>
+            </div>
         `;
+    }
+
+    /**
+     * Get interpretation of quiz results
+     */
+    getInterpretation(level, confidence, accuracy) {
+        let interpretation = `<p>Your vocabulary frontier is at approximately <strong>word ${level}</strong> in our frequency-sorted list.</p>`;
+
+        if (level < 500) {
+            interpretation += `<p>🌱 <strong>Foundational Level:</strong> You're building your core vocabulary. Focus on the most common words.</p>`;
+        } else if (level < 1500) {
+            interpretation += `<p>📚 <strong>Intermediate Level:</strong> You have a solid foundation! You know the most common words and are expanding into everyday vocabulary.</p>`;
+        } else if (level < 2500) {
+            interpretation += `<p>🎓 <strong>Advanced Level:</strong> Excellent! You have a strong vocabulary covering most common and many specialized words.</p>`;
+        } else {
+            interpretation += `<p>🏆 <strong>Expert Level:</strong> Outstanding! You have mastery over advanced and specialized vocabulary.</p>`;
+        }
+
+        if (confidence > 70) {
+            interpretation += `<p>✅ <strong>High Confidence:</strong> We have a reliable estimate of your frontier (${confidence}% confidence).</p>`;
+        } else if (confidence > 40) {
+            interpretation += `<p>⚠️ <strong>Moderate Confidence:</strong> Continue the quiz or take another one to refine the estimate (${confidence}% confidence).</p>`;
+        } else {
+            interpretation += `<p>📊 <strong>Low Confidence:</strong> Take a longer quiz to get a more accurate frontier estimate (${confidence}% confidence).</p>`;
+        }
+
+        if (accuracy >= 40 && accuracy <= 70) {
+            interpretation += `<p>🎯 <strong>Optimal Challenge:</strong> Your accuracy of ${accuracy}% shows we're testing at your true frontier!</p>`;
+        } else if (accuracy > 70) {
+            interpretation += `<p>⬆️ <strong>Room to Grow:</strong> Your high accuracy (${accuracy}%) suggests you could challenge yourself with harder words.</p>`;
+        } else {
+            interpretation += `<p>⬇️ <strong>Building Foundation:</strong> Focus on words in your current range to build confidence.</p>`;
+        }
+
+        return interpretation;
     }
 
     /**
@@ -642,8 +699,6 @@ class VocabApp {
      * Show settings screen
      */
     showSettings() {
-        const settings = this.userProgress.getSettings();
-        document.getElementById('questions-per-quiz').value = settings.questionsPerQuiz;
         this.showScreen('settings');
     }
 
@@ -673,10 +728,17 @@ class VocabApp {
             screen.classList.add('active');
             this.currentScreen = screenName;
 
-            // Reset quiz results visibility
+            // Reset quiz UI
             if (screenName === 'quiz') {
                 document.getElementById('quiz-content').classList.remove('hidden');
                 document.getElementById('quiz-results').classList.add('hidden');
+                document.getElementById('quiz-frontier-info').classList.remove('hidden');
+
+                // Reset stop button
+                const stopBtn = document.getElementById('stop-quiz-btn');
+                stopBtn.textContent = 'Stop Quiz & See Results';
+                stopBtn.classList.remove('btn-success');
+                stopBtn.classList.add('btn-secondary');
             }
         }
 

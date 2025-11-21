@@ -73,9 +73,18 @@
                 <div class="quiz-header">
                     <button class="btn-back">← Back to Menu</button>
                     <div class="quiz-progress">
-                        <span id="quiz-question-number">Question 1/10</span>
+                        <span id="quiz-question-number">Question 1</span>
                         <span id="quiz-score">Score: 0/0</span>
+                        <span id="quiz-frontier">Frontier: ~2000</span>
                     </div>
+                </div>
+
+                <div id="quiz-frontier-info" class="frontier-info">
+                    <p class="frontier-description">
+                        🎯 Adaptive Quiz: Questions dynamically adjust to your vocabulary frontier.
+                        Continue until you want to stop!
+                    </p>
+                    <button id="stop-quiz-btn" class="btn-secondary">Stop Quiz & See Results</button>
                 </div>
 
                 <div id="quiz-content">
@@ -195,15 +204,8 @@
 
                 <div class="settings-section">
                     <h3>Quiz Settings</h3>
-                    <label>
-                        Questions per quiz:
-                        <select id="questions-per-quiz">
-                            <option value="5">5</option>
-                            <option value="10" selected>10</option>
-                            <option value="15">15</option>
-                            <option value="20">20</option>
-                        </select>
-                    </label>
+                    <p>The Adaptive Quiz uses statistical inference to find your vocabulary frontier.</p>
+                    <p>Continue until the app suggests stopping (typically 15-25 questions for accurate results).</p>
                 </div>
 
                 <div class="settings-section">
