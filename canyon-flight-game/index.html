@@ -170,14 +170,14 @@
                 <option value="sunset" selected>Sunset</option>
             </select>
 
-            <label>Canyon Detail (LOD): <span id="lod-value" class="value-display">5</span></label>
-            <input type="range" id="canyon-lod" min="2" max="8" value="5">
+            <label>Canyon Detail (LOD): <span id="lod-value" class="value-display">12</span></label>
+            <input type="range" id="canyon-lod" min="2" max="20" value="12">
 
             <label>Ring Frequency: <span id="ring-freq-value" class="value-display">3</span></label>
             <input type="range" id="ring-frequency" min="0" max="10" value="3">
 
-            <label>Flight Speed: <span id="speed-value" class="value-display">1.0</span>x</label>
-            <input type="range" id="flight-speed" min="0.5" max="3" step="0.1" value="1">
+            <label>Flight Speed: <span id="speed-value" class="value-display">1.5</span>x</label>
+            <input type="range" id="flight-speed" min="0.5" max="3" step="0.1" value="1.5">
 
             <div class="checkbox-container">
                 <input type="checkbox" id="stabilization-enabled" checked>
@@ -185,7 +185,7 @@
             </div>
 
             <div class="checkbox-container">
-                <input type="checkbox" id="enemies-enabled" checked>
+                <input type="checkbox" id="enemies-enabled">
                 <label for="enemies-enabled">Enable Enemy Planes</label>
             </div>
 
@@ -225,10 +225,10 @@
             canyonDepth: 2000,
             segmentLength: 100,
             visibleSegments: 25,
-            lodLevel: 5,
+            lodLevel: 12,
             ringFrequency: 3,
-            flightSpeed: 1.0,
-            enemiesEnabled: true,
+            flightSpeed: 1.5,
+            enemiesEnabled: false,
             enemyDifficulty: 5,
             timeOfDay: 'sunset',
             stabilizationEnabled: true
@@ -348,6 +348,19 @@
             return (pathNoise.noise2D(z * 0.005, 500) + 1) / 2;
         }
 
+        // Get canyon width multiplier (varies between 1x and 2x)
+        function getCanyonWidthMultiplier(z) {
+            return 1.0 + (pathNoise.noise2D(z * 0.003, 700) + 1) / 2;
+        }
+
+        // Get canyon rim height variation (dramatic variation)
+        function getCanyonRimHeight(z) {
+            // Base height + dramatic variation
+            const base = CONFIG.canyonHeight;
+            const variation = pathNoise.noise2D(z * 0.004, 900) * 100; // +/- 100 units
+            return base + variation;
+        }
+
         // Initialize the game
         function init() {
             // Scene setup
@@ -382,7 +395,7 @@
             updateSkybox();
         }
 
-        function updateSkybox() {
+        function updateSkybox(centerOnPlayer = false) {
             // Remove old skybox
             const oldSkybox = scene.getObjectByName('skybox');
             if (oldSkybox) scene.remove(oldSkybox);
@@ -445,6 +458,12 @@
 
             const sky = new THREE.Mesh(skyGeo, skyMat);
             sky.name = 'skybox';
+
+            // Center on player if requested
+            if (centerOnPlayer && aircraft) {
+                sky.position.copy(aircraft.position);
+            }
+
             scene.add(sky);
         }
 
@@ -495,11 +514,15 @@
             });
         }
 
+        let sunLight, sunVisual;
+
         function setupLighting() {
             // Remove old lights and sun visual
             scene.children = scene.children.filter(child =>
                 !(child instanceof THREE.Light) && child.name !== 'sunVisual'
             );
+            sunLight = null;
+            sunVisual = null;
 
             // Ambient light
             let ambientIntensity, ambientColor;
@@ -534,18 +557,19 @@
             scene.add(ambient);
 
             // Directional light (sun)
-            const sun = new THREE.DirectionalLight(sunColor, sunIntensity);
-            sun.position.copy(sunPosition);
-            sun.castShadow = true;
-            sun.shadow.mapSize.width = 2048;
-            sun.shadow.mapSize.height = 2048;
-            sun.shadow.camera.near = 0.5;
-            sun.shadow.camera.far = 500;
-            sun.shadow.camera.left = -150;
-            sun.shadow.camera.right = 150;
-            sun.shadow.camera.top = 150;
-            sun.shadow.camera.bottom = -150;
-            scene.add(sun);
+            sunLight = new THREE.DirectionalLight(sunColor, sunIntensity);
+            sunLight.position.copy(sunPosition);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 500;
+            sunLight.shadow.camera.left = -150;
+            sunLight.shadow.camera.right = 150;
+            sunLight.shadow.camera.top = 150;
+            sunLight.shadow.camera.bottom = -150;
+            sunLight.userData.initialPosition = sunPosition.clone();
+            scene.add(sunLight);
 
             // Add sun visual for sunset
             if (CONFIG.timeOfDay === 'sunset') {
@@ -555,10 +579,24 @@
                     transparent: true,
                     opacity: 0.9
                 });
-                const sunMesh = new THREE.Mesh(sunGeo, sunMat);
-                sunMesh.position.copy(sunPosition).multiplyScalar(5);
-                sunMesh.name = 'sunVisual';
-                scene.add(sunMesh);
+                sunVisual = new THREE.Mesh(sunGeo, sunMat);
+                sunVisual.position.copy(sunPosition).multiplyScalar(5);
+                sunVisual.name = 'sunVisual';
+                sunVisual.userData.initialPosition = sunVisual.position.clone();
+                scene.add(sunVisual);
+            }
+        }
+
+        function updateLightingPosition() {
+            if (sunLight && aircraft) {
+                const offset = sunLight.userData.initialPosition;
+                sunLight.position.copy(aircraft.position).add(offset);
+                sunLight.target.position.copy(aircraft.position);
+                sunLight.target.updateMatrixWorld();
+            }
+            if (sunVisual && aircraft) {
+                const offset = sunVisual.userData.initialPosition;
+                sunVisual.position.copy(aircraft.position).add(offset);
             }
         }
 
@@ -628,12 +666,13 @@
             segment.userData.zPosition = zPosition;
 
             const resolution = Math.pow(2, CONFIG.lodLevel);
-            const halfWidth = CONFIG.canyonWidth / 2;
 
             // Get canyon center for this segment
             const segmentCenterZ = zPosition - CONFIG.segmentLength / 2;
             const canyonCenterX = getCanyonCenter(segmentCenterZ);
             const crossSection = getCrossSectionShape(segmentCenterZ);
+            const widthMultiplier = getCanyonWidthMultiplier(segmentCenterZ);
+            const halfWidth = (CONFIG.canyonWidth / 2) * widthMultiplier;
 
             // Create canyon geometry with varying cross-section
             const leftWallGeo = new THREE.BufferGeometry();
@@ -648,6 +687,7 @@
             const leftVerts = [];
             const rightVerts = [];
             const floorVerts = [];
+            const floorColors = [];
             const leftNormals = [];
             const rightNormals = [];
             const floorNormals = [];
@@ -658,10 +698,13 @@
                 const z = zPosition - zFrac * CONFIG.segmentLength;
                 const localCenterX = getCanyonCenter(z);
                 const localCrossSection = getCrossSectionShape(z);
+                const localWidthMult = getCanyonWidthMultiplier(z);
+                const localHalfWidth = (CONFIG.canyonWidth / 2) * localWidthMult;
+                const localRimHeight = getCanyonRimHeight(z);
 
                 for (let iy = 0; iy <= segResY; iy++) {
                     const yFrac = iy / segResY;
-                    const y = yFrac * CONFIG.canyonHeight;
+                    const y = yFrac * localRimHeight;
 
                     // Wall angle: V-shape has angled walls, U-shape has more vertical walls
                     // But never perfectly vertical
@@ -677,12 +720,12 @@
                     }
 
                     // Left wall X position (wall leans inward at bottom for V, straighter for U)
-                    const leftBaseX = localCenterX - halfWidth + (1 - yFrac) * halfWidth * (1 - wallAngle) - topExtension;
+                    const leftBaseX = localCenterX - localHalfWidth + (1 - yFrac) * localHalfWidth * (1 - wallAngle) - topExtension;
                     const leftDisplacement = noise.fbm(z * 0.01, y * 0.05, CONFIG.lodLevel) * 8;
                     const leftX = leftBaseX - leftDisplacement;
 
                     // Right wall X position
-                    const rightBaseX = localCenterX + halfWidth - (1 - yFrac) * halfWidth * (1 - wallAngle) + topExtension;
+                    const rightBaseX = localCenterX + localHalfWidth - (1 - yFrac) * localHalfWidth * (1 - wallAngle) + topExtension;
                     const rightDisplacement = noise.fbm(z * 0.01 + 100, y * 0.05, CONFIG.lodLevel) * 8;
                     const rightX = rightBaseX + rightDisplacement;
 
@@ -697,22 +740,26 @@
                 const z = zPosition - zFrac * CONFIG.segmentLength;
                 const localCenterX = getCanyonCenter(z);
                 const localCrossSection = getCrossSectionShape(z);
+                const localWidthMult = getCanyonWidthMultiplier(z);
+                const localHalfWidth = (CONFIG.canyonWidth / 2) * localWidthMult;
 
                 for (let ix = 0; ix <= segResX; ix++) {
                     const xFrac = ix / segResX;
-                    const localX = (xFrac - 0.5) * CONFIG.canyonWidth;
+                    const localX = (xFrac - 0.5) * CONFIG.canyonWidth * localWidthMult;
                     const x = localCenterX + localX;
 
                     // Floor shape: V has pointed bottom, U has flatter bottom
-                    const distFromCenter = Math.abs(localX) / (halfWidth);
+                    const distFromCenter = Math.abs(localX) / (localHalfWidth);
 
                     // River channel
                     const riverWidth = 0.15;
                     let height;
 
                     if (distFromCenter < riverWidth) {
-                        // River bed - below raised river level
+                        // River bed - below raised river level (water area)
                         height = 0 - noise.fbm(z * 0.02, x * 0.1, 3) * 0.5;
+                        // Blue reflective water color
+                        floorColors.push(0.1, 0.5, 1.0); // RGB for water
                     } else {
                         // Floor rises from center
                         // V-shape: steep rise, U-shape: gradual then steep
@@ -723,6 +770,8 @@
                         // Add fractal detail - floor is never perfectly flat
                         const detail = noise.fbm(z * 0.01, x * 0.02, CONFIG.lodLevel) * 3;
                         height = baseHeight + detail;
+                        // Brown rock color
+                        floorColors.push(0.4, 0.26, 0.13); // RGB for rock
                     }
 
                     floorVerts.push(x, height, z);
@@ -771,17 +820,24 @@
             rightWallGeo.computeVertexNormals();
 
             floorGeo.setAttribute('position', new THREE.Float32BufferAttribute(floorVerts, 3));
+            floorGeo.setAttribute('color', new THREE.Float32BufferAttribute(floorColors, 3));
             floorGeo.setIndex(floorIndices);
             floorGeo.computeVertexNormals();
 
             // Materials - smooth shading lets fractal geometry and lighting do the work
-            const wallMaterial = new THREE.MeshPhongMaterial({
+            const wallMaterial = new THREE.MeshStandardMaterial({
                 color: 0x8B4513,
+                roughness: 0.9,
+                metalness: 0.1,
                 side: THREE.DoubleSide
             });
 
-            const floorMaterial = new THREE.MeshPhongMaterial({
-                color: 0x654321
+            // Floor material with vertex colors (blue for water, brown for rock)
+            const floorMaterial = new THREE.MeshStandardMaterial({
+                roughness: 0.3,
+                metalness: 0.7,
+                vertexColors: true,
+                envMapIntensity: 1.5
             });
 
             // Create meshes
@@ -798,46 +854,6 @@
             const floor = new THREE.Mesh(floorGeo, floorMaterial);
             floor.receiveShadow = true;
             segment.add(floor);
-
-            // River (follows canyon center) - reflective water
-            const riverVerts = [];
-            const riverIndices = [];
-            const riverLevel = 2; // Raised river level
-            for (let iz = 0; iz <= segResZ; iz++) {
-                const zFrac = iz / segResZ;
-                const z = zPosition - zFrac * CONFIG.segmentLength;
-                const localCenterX = getCanyonCenter(z);
-
-                riverVerts.push(localCenterX - 8, riverLevel, z);
-                riverVerts.push(localCenterX + 8, riverLevel, z);
-            }
-
-            for (let iz = 0; iz < segResZ; iz++) {
-                const a = iz * 2;
-                const b = a + 1;
-                const c = a + 2;
-                const d = a + 3;
-                riverIndices.push(a, c, b);
-                riverIndices.push(b, c, d);
-            }
-
-            const riverGeo = new THREE.BufferGeometry();
-            riverGeo.setAttribute('position', new THREE.Float32BufferAttribute(riverVerts, 3));
-            riverGeo.setIndex(riverIndices);
-            riverGeo.computeVertexNormals();
-
-            // Reflective water material
-            const riverMaterial = new THREE.MeshStandardMaterial({
-                color: 0x1E90FF,
-                transparent: true,
-                opacity: 0.85,
-                metalness: 0.9,
-                roughness: 0.1,
-                envMapIntensity: 1.0
-            });
-
-            const river = new THREE.Mesh(riverGeo, riverMaterial);
-            segment.add(river);
 
             // Add rings randomly (only if frequency > 0)
             if (CONFIG.ringFrequency > 0 && Math.random() < CONFIG.ringFrequency / 10) {
@@ -923,7 +939,8 @@
 
             bullet.position.copy(position);
             bullet.userData.direction = direction.clone();
-            bullet.userData.speed = isEnemy ? 100 : 150;
+            bullet.userData.speed = isEnemy ? 300 : 450; // 3x faster
+            bullet.userData.velocity = direction.clone().multiplyScalar(bullet.userData.speed);
             bullet.userData.isEnemy = isEnemy;
 
             scene.add(bullet);
@@ -1069,13 +1086,15 @@
             const playerPos = aircraft.position;
             const canyonCenterX = getCanyonCenter(playerPos.z);
             const crossSection = getCrossSectionShape(playerPos.z);
+            const widthMultiplier = getCanyonWidthMultiplier(playerPos.z);
+            const rimHeight = getCanyonRimHeight(playerPos.z);
 
             // Calculate local position relative to canyon center
             const localX = playerPos.x - canyonCenterX;
-            const halfWidth = CONFIG.canyonWidth / 2;
+            const halfWidth = (CONFIG.canyonWidth / 2) * widthMultiplier;
 
             // Wall collision - account for sloped walls
-            const yFrac = playerPos.y / CONFIG.canyonHeight;
+            const yFrac = playerPos.y / rimHeight;
             const baseAngle = 0.15 + crossSection * 0.6;
             const effectiveHalfWidth = halfWidth - (1 - yFrac) * halfWidth * (1 - baseAngle) - 8;
 
@@ -1097,9 +1116,10 @@
                 return;
             }
 
-            // Ceiling (canyon rim)
-            if (playerPos.y > CONFIG.canyonHeight - 5) {
-                aircraft.position.y = CONFIG.canyonHeight - 5;
+            // Ceiling (canyon rim) - cap below the lowest possible rim
+            const lowestRim = CONFIG.canyonHeight - 100; // Lowest rim is base - 100
+            if (playerPos.y > lowestRim - 10) {
+                aircraft.position.y = lowestRim - 10;
             }
 
             // Ring collection
@@ -1158,40 +1178,63 @@
         }
 
         function updateAircraft(delta) {
-            // Control input
-            if (keys['w']) pitch = Math.max(pitch - 2 * delta, -0.8);
-            else if (keys['s']) pitch = Math.min(pitch + 2 * delta, 0.8);
-            else if (CONFIG.stabilizationEnabled) pitch *= 0.95;
+            const canyonCenterX = getCanyonCenter(aircraft.position.z);
 
-            if (keys['a']) roll = Math.max(roll - 2 * delta, -1.0);
-            else if (keys['d']) roll = Math.min(roll + 2 * delta, 1.0);
-            else if (CONFIG.stabilizationEnabled) roll *= 0.95;
+            // Auto-stabilization: follow canyon center
+            if (CONFIG.stabilizationEnabled) {
+                // Calculate desired roll to follow canyon
+                const localX = aircraft.position.x - canyonCenterX;
+                const desiredRoll = -localX * 0.01; // Proportional control
+
+                // User input modifies roll
+                if (keys['a']) roll = Math.max(roll - 2 * delta, -1.0);
+                else if (keys['d']) roll = Math.min(roll + 2 * delta, 1.0);
+                else {
+                    // Auto-roll towards desired position
+                    const rollDiff = desiredRoll - roll;
+                    roll += rollDiff * 2 * delta; // Smooth interpolation
+                }
+
+                // Pitch control
+                if (keys['w']) pitch = Math.max(pitch - 2 * delta, -0.8);
+                else if (keys['s']) pitch = Math.min(pitch + 2 * delta, 0.8);
+                else pitch *= 0.95;
+            } else {
+                // Manual control without stabilization
+                if (keys['w']) pitch = Math.max(pitch - 2 * delta, -0.8);
+                else if (keys['s']) pitch = Math.min(pitch + 2 * delta, 0.8);
+
+                if (keys['a']) roll = Math.max(roll - 2 * delta, -1.0);
+                else if (keys['d']) roll = Math.min(roll + 2 * delta, 1.0);
+
+                // Yaw based on roll (banking turns)
+                yaw += roll * delta * 0.5;
+                aircraft.rotation.y = yaw;
+            }
 
             // Apply rotation
             aircraft.rotation.x = pitch;
             aircraft.rotation.z = -roll;
 
-            // Yaw based on roll (banking turns)
-            if (!CONFIG.stabilizationEnabled) {
-                yaw += roll * delta * 0.5;
-                aircraft.rotation.y = yaw;
-            }
-
             // Calculate movement direction
             const forward = new THREE.Vector3(0, 0, -1);
             forward.applyQuaternion(aircraft.quaternion);
 
-            // Move aircraft
+            // Move aircraft using actual physics (not sliding)
             const speed = 50 * CONFIG.flightSpeed * delta;
             aircraft.position.add(forward.multiplyScalar(speed));
 
-            // Update position based on pitch and roll
-            aircraft.position.y += -pitch * 30 * delta;
-            aircraft.position.x += roll * 30 * delta;
+            // Vertical movement from pitch
+            const verticalSpeed = -pitch * 30 * delta;
+            aircraft.position.y += verticalSpeed;
+
+            // Horizontal movement from roll (banking)
+            const horizontalSpeed = roll * 30 * delta;
+            aircraft.position.x += horizontalSpeed;
 
             // Clamp vertical position only
-            const canyonCenterX = getCanyonCenter(aircraft.position.z);
-            aircraft.position.y = Math.max(8, Math.min(CONFIG.canyonHeight - 5, aircraft.position.y));
+            const lowestRim = CONFIG.canyonHeight - 100;
+            aircraft.position.y = Math.max(8, Math.min(lowestRim - 10, aircraft.position.y));
 
             playerZ = aircraft.position.z;
 
@@ -1278,11 +1321,17 @@
         }
 
         function updateBullets(delta) {
+            const gravity = 30; // Bullet drop
+
             // Player bullets
             bullets.forEach((bullet, index) => {
+                // Apply velocity
                 bullet.position.add(
-                    bullet.userData.direction.clone().multiplyScalar(bullet.userData.speed * delta)
+                    bullet.userData.velocity.clone().multiplyScalar(delta)
                 );
+
+                // Apply gravity (bullet drop)
+                bullet.userData.velocity.y -= gravity * delta;
 
                 // Remove if too far
                 if (bullet.position.distanceTo(aircraft.position) > 500) {
@@ -1293,9 +1342,13 @@
 
             // Enemy bullets
             enemyBullets.forEach((bullet, index) => {
+                // Apply velocity
                 bullet.position.add(
-                    bullet.userData.direction.clone().multiplyScalar(bullet.userData.speed * delta)
+                    bullet.userData.velocity.clone().multiplyScalar(delta)
                 );
+
+                // Apply gravity (bullet drop)
+                bullet.userData.velocity.y -= gravity * delta;
 
                 // Remove if too far
                 if (bullet.position.distanceTo(aircraft.position) > 300) {
@@ -1319,7 +1372,14 @@
                 updateEnemies(delta);
                 updateBullets(delta);
                 updateFogPlanes();
+                updateLightingPosition();
                 checkCollisions();
+            }
+
+            // Update skybox position to follow player
+            const skybox = scene.getObjectByName('skybox');
+            if (skybox && aircraft) {
+                skybox.position.copy(aircraft.position);
             }
 
             renderer.render(scene, camera);
