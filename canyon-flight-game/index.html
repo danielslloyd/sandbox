@@ -665,7 +665,7 @@
             const segment = new THREE.Group();
             segment.userData.zPosition = zPosition;
 
-            const resolution = Math.pow(2, CONFIG.lodLevel);
+            const resolution = CONFIG.lodLevel;
 
             // Get canyon center for this segment
             const segmentCenterZ = zPosition - CONFIG.segmentLength / 2;
