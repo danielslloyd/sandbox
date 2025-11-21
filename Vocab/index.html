@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vocabulary Learning Application</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header id="app-header">
+            <h1>📚 Vocabulary Builder</h1>
+            <div id="user-info" class="user-info">
+                <span id="current-user">Guest</span>
+                <button id="change-user-btn" class="btn-small">Change User</button>
+            </div>
+        </header>
+
+        <!-- Login Screen -->
+        <div id="login-screen" class="screen active">
+            <div class="login-box">
+                <h2>Welcome to Vocabulary Builder</h2>
+                <p>Enter your username to get started:</p>
+                <input type="text" id="username-input" placeholder="Enter username" autofocus>
+                <button id="login-btn" class="btn-primary">Start Learning</button>
+            </div>
+        </div>
+
+        <!-- Main Menu Screen -->
+        <div id="main-menu-screen" class="screen">
+            <div class="menu-box">
+                <h2>Main Menu</h2>
+                <div id="user-stats" class="stats-summary"></div>
+
+                <div class="menu-grid">
+                    <button class="menu-btn" data-mode="adaptive-quiz">
+                        <span class="icon">🎯</span>
+                        <h3>Adaptive Quiz</h3>
+                        <p>Assess your vocabulary level</p>
+                    </button>
+
+                    <button class="menu-btn" data-mode="review">
+                        <span class="icon">🔄</span>
+                        <h3>Review Mode</h3>
+                        <p>Spaced repetition practice</p>
+                    </button>
+
+                    <button class="menu-btn" data-mode="flashcard">
+                        <span class="icon">🗂️</span>
+                        <h3>Flashcard Mode</h3>
+                        <p>Review difficult words</p>
+                    </button>
+
+                    <button class="menu-btn" data-mode="progress">
+                        <span class="icon">📊</span>
+                        <h3>View Progress</h3>
+                        <p>See your statistics</p>
+                    </button>
+
+                    <button class="menu-btn" data-mode="settings">
+                        <span class="icon">⚙️</span>
+                        <h3>Settings</h3>
+                        <p>Configure options</p>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Adaptive Quiz Screen -->
+        <div id="quiz-screen" class="screen">
+            <div class="quiz-box">
+                <div class="quiz-header">
+                    <button class="btn-back">← Back to Menu</button>
+                    <div class="quiz-progress">
+                        <span id="quiz-question-number">Question 1/10</span>
+                        <span id="quiz-score">Score: 0/0</span>
+                    </div>
+                </div>
+
+                <div id="quiz-content">
+                    <h2 id="quiz-word" class="quiz-word">Loading...</h2>
+                    <p id="quiz-phonetic" class="phonetic"></p>
+                    <p class="quiz-prompt">What is the definition?</p>
+
+                    <div id="quiz-options" class="options-grid"></div>
+
+                    <div id="quiz-feedback" class="feedback hidden"></div>
+
+                    <div id="quiz-etymology" class="etymology hidden"></div>
+
+                    <button id="next-question-btn" class="btn-primary hidden">Next Question</button>
+                </div>
+
+                <div id="quiz-results" class="hidden">
+                    <h2>Quiz Complete!</h2>
+                    <div id="quiz-final-stats"></div>
+                    <button class="btn-primary btn-back">Back to Menu</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Review Mode Screen -->
+        <div id="review-screen" class="screen">
+            <div class="review-box">
+                <div class="review-header">
+                    <button class="btn-back">← Back to Menu</button>
+                    <div class="review-progress">
+                        <span id="review-progress-text">Words remaining: 0</span>
+                    </div>
+                </div>
+
+                <div id="review-content">
+                    <div id="review-empty" class="empty-state">
+                        <h2>No words due for review!</h2>
+                        <p>Great job! Come back later or try the adaptive quiz.</p>
+                        <button class="btn-primary btn-back">Back to Menu</button>
+                    </div>
+
+                    <div id="review-question" class="hidden">
+                        <h2 id="review-word" class="quiz-word">Word</h2>
+                        <p id="review-phonetic" class="phonetic"></p>
+                        <p class="quiz-prompt">Select the correct definition:</p>
+
+                        <div id="review-options" class="options-grid"></div>
+
+                        <div id="review-feedback" class="feedback hidden"></div>
+
+                        <button id="review-next-btn" class="btn-primary hidden">Next Word</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Flashcard Mode Screen -->
+        <div id="flashcard-screen" class="screen">
+            <div class="flashcard-box">
+                <div class="flashcard-header">
+                    <button class="btn-back">← Back to Menu</button>
+                    <div class="flashcard-progress">
+                        <span id="flashcard-progress-text">Card 1/10</span>
+                    </div>
+                </div>
+
+                <div id="flashcard-content">
+                    <div id="flashcard-empty" class="empty-state">
+                        <h2>No flashcards available!</h2>
+                        <p>Take the quiz first to build your flashcard deck.</p>
+                        <button class="btn-primary btn-back">Back to Menu</button>
+                    </div>
+
+                    <div id="flashcard-card" class="hidden">
+                        <div class="flashcard">
+                            <div id="flashcard-front" class="flashcard-side">
+                                <h2 id="flashcard-word" class="flashcard-word">Word</h2>
+                                <p id="flashcard-phonetic" class="phonetic"></p>
+                                <button id="flip-card-btn" class="btn-primary">Show Definition</button>
+                            </div>
+
+                            <div id="flashcard-back" class="flashcard-side hidden">
+                                <p id="flashcard-definition" class="definition"></p>
+                                <p id="flashcard-etymology" class="etymology"></p>
+
+                                <div class="flashcard-actions">
+                                    <p>Did you know this word?</p>
+                                    <button id="flashcard-wrong-btn" class="btn-danger">No</button>
+                                    <button id="flashcard-correct-btn" class="btn-success">Yes</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Screen -->
+        <div id="progress-screen" class="screen">
+            <div class="progress-box">
+                <button class="btn-back">← Back to Menu</button>
+                <h2>Your Progress</h2>
+                <div id="progress-stats"></div>
+            </div>
+        </div>
+
+        <!-- Settings Screen -->
+        <div id="settings-screen" class="screen">
+            <div class="settings-box">
+                <button class="btn-back">← Back to Menu</button>
+                <h2>Settings</h2>
+
+                <div class="settings-section">
+                    <h3>User Management</h3>
+                    <button id="reset-progress-btn" class="btn-danger">Reset My Progress</button>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Quiz Settings</h3>
+                    <label>
+                        Questions per quiz:
+                        <select id="questions-per-quiz">
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="15">15</option>
+                            <option value="20">20</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="settings-section">
+                    <h3>About</h3>
+                    <p>Vocabulary Learning Application v2.0</p>
+                    <p>Built with HTML, CSS, and JavaScript</p>
+                    <p>Definitions from Free Dictionary API</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="js/vocab-app.js"></script>
+</body>
+</html>
