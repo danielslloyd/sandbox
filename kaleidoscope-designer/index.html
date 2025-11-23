@@ -199,23 +199,13 @@
             color: #004085;
             margin-bottom: 15px;
         }
-
-        .color-preview {
-            display: inline-block;
-            width: 30px;
-            height: 30px;
-            border: 2px solid #ddd;
-            border-radius: 4px;
-            vertical-align: middle;
-            margin-left: 10px;
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>✨ Kaleidoscope Designer ✨</h1>
-            <p>Create beautiful symmetrical patterns for coloring</p>
+            <p>Create beautiful symmetrical patterns for coloring - Draw in the highlighted wedge</p>
         </div>
 
         <div class="main-content">
@@ -230,10 +220,19 @@
 
                     <label for="symmetryOrder">Order of Symmetry: <span id="orderValue" class="range-value">6</span></label>
                     <input type="range" id="symmetryOrder" min="2" max="24" value="6" step="1">
+
+                    <div class="info-box" id="wedgeInfo">
+                        Editable wedge: 60°
+                    </div>
                 </div>
 
                 <div class="control-group">
                     <h3>Drawing Tools</h3>
+                    <div class="info-box">
+                        Lines & Beziers: Click to place points<br>
+                        Circles: Click center, then radius<br>
+                        Hold Alt to disable snap-to-intersection
+                    </div>
                     <div class="tool-buttons">
                         <button class="tool-button active" data-tool="line">Line</button>
                         <button class="tool-button" data-tool="circle">Circle</button>
@@ -245,6 +244,9 @@
 
                     <label for="strokeWidth">Stroke Width: <span id="strokeWidthValue" class="range-value">2</span></label>
                     <input type="range" id="strokeWidth" min="0.5" max="5" value="2" step="0.5">
+
+                    <label for="snapDistance">Snap Distance: <span id="snapDistanceValue" class="range-value">15</span>px</label>
+                    <input type="range" id="snapDistance" min="5" max="30" value="15" step="1">
                 </div>
 
                 <div class="control-group">
@@ -298,12 +300,16 @@
                 this.currentTool = 'line';
                 this.strokeColor = '#000000';
                 this.strokeWidth = 2;
+                this.snapDistance = 15;
 
                 // Drawing state
                 this.isDrawing = false;
-                this.drawingPoints = [];
+                this.bezierClickCount = 0;
                 this.shapes = [];
                 this.currentShape = null;
+                this.intersectionPoints = [];
+                this.altKeyPressed = false;
+                this.previewPoint = null;
 
                 this.init();
             }
@@ -311,6 +317,7 @@
             init() {
                 this.setupEventListeners();
                 this.updateRangeValues();
+                this.updateWedgeInfo();
                 this.render();
             }
 
@@ -319,6 +326,15 @@
                 this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
                 this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
                 this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+                this.canvas.addEventListener('click', (e) => this.handleClick(e));
+
+                // Keyboard events for Alt key
+                window.addEventListener('keydown', (e) => {
+                    if (e.key === 'Alt') this.altKeyPressed = true;
+                });
+                window.addEventListener('keyup', (e) => {
+                    if (e.key === 'Alt') this.altKeyPressed = false;
+                });
 
                 // Tool selection
                 document.querySelectorAll('.tool-button').forEach(btn => {
@@ -326,19 +342,23 @@
                         document.querySelectorAll('.tool-button').forEach(b => b.classList.remove('active'));
                         btn.classList.add('active');
                         this.currentTool = btn.dataset.tool;
-                        this.drawingPoints = [];
+                        this.resetDrawing();
                     });
                 });
 
                 // Controls
                 document.getElementById('symmetryType').addEventListener('change', (e) => {
                     this.symmetryType = e.target.value;
+                    this.updateWedgeInfo();
+                    this.updateIntersections();
                     this.render();
                 });
 
                 document.getElementById('symmetryOrder').addEventListener('input', (e) => {
                     this.symmetryOrder = parseInt(e.target.value);
                     document.getElementById('orderValue').textContent = this.symmetryOrder;
+                    this.updateWedgeInfo();
+                    this.updateIntersections();
                     this.render();
                 });
 
@@ -349,6 +369,11 @@
                 document.getElementById('strokeWidth').addEventListener('input', (e) => {
                     this.strokeWidth = parseFloat(e.target.value);
                     document.getElementById('strokeWidthValue').textContent = this.strokeWidth;
+                });
+
+                document.getElementById('snapDistance').addEventListener('input', (e) => {
+                    this.snapDistance = parseFloat(e.target.value);
+                    document.getElementById('snapDistanceValue').textContent = this.snapDistance;
                 });
 
                 // Range value updates
@@ -374,9 +399,24 @@
             updateRangeValues() {
                 document.getElementById('orderValue').textContent = this.symmetryOrder;
                 document.getElementById('strokeWidthValue').textContent = this.strokeWidth;
+                document.getElementById('snapDistanceValue').textContent = this.snapDistance;
                 document.getElementById('randomLinesValue').textContent = document.getElementById('randomLines').value;
                 document.getElementById('randomJitterValue').textContent = document.getElementById('randomJitter').value;
                 document.getElementById('exportLineWidthValue').textContent = document.getElementById('exportLineWidth').value;
+            }
+
+            updateWedgeInfo() {
+                const wedgeAngle = this.getEditableWedgeAngle();
+                const degrees = Math.round((wedgeAngle * 180 / Math.PI) * 10) / 10;
+                document.getElementById('wedgeInfo').textContent = `Editable wedge: ${degrees}°`;
+            }
+
+            getEditableWedgeAngle() {
+                if (this.symmetryType === 'radial') {
+                    return Math.PI / this.symmetryOrder; // 180/N degrees
+                } else {
+                    return (2 * Math.PI) / this.symmetryOrder; // 360/N degrees
+                }
             }
 
             getMousePos(e) {
@@ -387,177 +427,558 @@
                 };
             }
 
-            // Convert canvas coordinates to wedge-relative coordinates
-            canvasToWedge(x, y) {
+            pointToAngle(x, y) {
                 const dx = x - this.centerX;
                 const dy = y - this.centerY;
-                const angle = Math.atan2(dy, dx);
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-                // Normalize angle to first wedge
-                const wedgeAngle = (2 * Math.PI) / this.symmetryOrder;
-                let normalizedAngle = ((angle % wedgeAngle) + wedgeAngle) % wedgeAngle;
-
-                return {
-                    angle: normalizedAngle,
-                    distance: distance,
-                    originalAngle: angle
-                };
+                let angle = Math.atan2(dy, dx);
+                // Normalize to [0, 2π]
+                if (angle < 0) angle += 2 * Math.PI;
+                return angle;
             }
 
-            // Convert wedge coordinates back to canvas
-            wedgeToCanvas(angle, distance) {
+            pointToDistance(x, y) {
+                const dx = x - this.centerX;
+                const dy = y - this.centerY;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+
+            angleDistanceToPoint(angle, distance) {
                 return {
                     x: this.centerX + distance * Math.cos(angle),
                     y: this.centerY + distance * Math.sin(angle)
                 };
             }
 
-            handleMouseDown(e) {
-                const pos = this.getMousePos(e);
-                const wedgePos = this.canvasToWedge(pos.x, pos.y);
+            isPointInEditableWedge(x, y) {
+                const angle = this.pointToAngle(x, y);
+                const wedgeAngle = this.getEditableWedgeAngle();
+                const distance = this.pointToDistance(x, y);
 
-                // Only allow drawing within the radius
-                if (wedgePos.distance > this.radius) return;
+                return distance <= this.radius && angle <= wedgeAngle;
+            }
 
-                this.isDrawing = true;
-                this.drawingPoints = [pos];
+            snapToIntersection(point) {
+                if (this.altKeyPressed || this.intersectionPoints.length === 0) {
+                    return point;
+                }
 
-                if (this.currentTool === 'line') {
-                    this.currentShape = {
-                        type: 'line',
-                        points: [pos],
-                        color: this.strokeColor,
-                        width: this.strokeWidth
+                let closestPoint = point;
+                let minDist = this.snapDistance;
+
+                for (const intersection of this.intersectionPoints) {
+                    const dist = Math.sqrt(
+                        Math.pow(point.x - intersection.x, 2) +
+                        Math.pow(point.y - intersection.y, 2)
+                    );
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closestPoint = intersection;
+                    }
+                }
+
+                return closestPoint;
+            }
+
+            clipLineToWedge(p1, p2) {
+                // Clip a line to the editable wedge boundaries
+                const wedgeAngle = this.getEditableWedgeAngle();
+
+                // Get boundaries: angle=0, angle=wedgeAngle, and radius circle
+                let points = [p1, p2];
+
+                // Clip to radius
+                points = this.clipLineToCircle(points[0], points[1], this.radius);
+                if (!points) return null;
+
+                // Clip to angle boundaries
+                points = this.clipLineToRay(points[0], points[1], 0);
+                if (!points) return null;
+
+                points = this.clipLineToRay(points[0], points[1], wedgeAngle);
+                if (!points) return null;
+
+                return points;
+            }
+
+            clipLineToCircle(p1, p2, radius) {
+                // Clip line segment to circle
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const fx = p1.x - this.centerX;
+                const fy = p1.y - this.centerY;
+
+                const a = dx*dx + dy*dy;
+                const b = 2*(fx*dx + fy*dy);
+                const c = fx*fx + fy*fy - radius*radius;
+
+                let discriminant = b*b - 4*a*c;
+
+                if (discriminant < 0) {
+                    // No intersection - check if entirely inside
+                    if (c < 0) return [p1, p2];
+                    return null;
+                }
+
+                discriminant = Math.sqrt(discriminant);
+                const t1 = (-b - discriminant) / (2*a);
+                const t2 = (-b + discriminant) / (2*a);
+
+                let newP1 = p1;
+                let newP2 = p2;
+
+                if (t1 >= 0 && t1 <= 1) {
+                    newP2 = {
+                        x: p1.x + t1 * dx,
+                        y: p1.y + t1 * dy
                     };
-                } else if (this.currentTool === 'circle') {
-                    this.currentShape = {
-                        type: 'circle',
-                        center: pos,
-                        radius: 0,
-                        color: this.strokeColor,
-                        width: this.strokeWidth
+                }
+                if (t2 >= 0 && t2 <= 1) {
+                    newP1 = {
+                        x: p1.x + t2 * dx,
+                        y: p1.y + t2 * dy
                     };
-                } else if (this.currentTool === 'bezier') {
-                    this.currentShape = {
-                        type: 'bezier',
-                        points: [pos],
-                        color: this.strokeColor,
-                        width: this.strokeWidth
-                    };
+                }
+
+                return [newP1, newP2];
+            }
+
+            clipLineToRay(p1, p2, rayAngle) {
+                // Clip line to one side of a ray from center
+                const rayX = Math.cos(rayAngle);
+                const rayY = Math.sin(rayAngle);
+
+                // Check which side of ray each point is on
+                const side1 = this.crossProduct(
+                    {x: rayX, y: rayY},
+                    {x: p1.x - this.centerX, y: p1.y - this.centerY}
+                );
+                const side2 = this.crossProduct(
+                    {x: rayX, y: rayY},
+                    {x: p2.x - this.centerX, y: p2.y - this.centerY}
+                );
+
+                if (side1 >= 0 && side2 >= 0) return [p1, p2]; // Both on correct side
+                if (side1 < 0 && side2 < 0) return null; // Both on wrong side
+
+                // One point on each side - find intersection
+                const intersection = this.lineRayIntersection(p1, p2, rayAngle);
+                if (!intersection) return null;
+
+                if (side1 >= 0) {
+                    return [p1, intersection];
+                } else {
+                    return [intersection, p2];
                 }
             }
 
-            handleMouseMove(e) {
-                if (!this.isDrawing) return;
+            lineRayIntersection(p1, p2, rayAngle) {
+                const rayX = Math.cos(rayAngle);
+                const rayY = Math.sin(rayAngle);
+
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+
+                const denom = rayX * dy - rayY * dx;
+                if (Math.abs(denom) < 1e-10) return null;
+
+                const t = (rayX * (p1.y - this.centerY) - rayY * (p1.x - this.centerX)) / denom;
+
+                if (t < 0 || t > 1) return null;
+
+                return {
+                    x: p1.x + t * dx,
+                    y: p1.y + t * dy
+                };
+            }
+
+            crossProduct(v1, v2) {
+                return v1.x * v2.y - v1.y * v2.x;
+            }
+
+            resetDrawing() {
+                this.isDrawing = false;
+                this.bezierClickCount = 0;
+                this.currentShape = null;
+                this.previewPoint = null;
+                this.render();
+            }
+
+            handleMouseDown(e) {
+                // Only for circle tool
+                if (this.currentTool !== 'circle') return;
 
                 const pos = this.getMousePos(e);
-                const wedgePos = this.canvasToWedge(pos.x, pos.y);
+                if (!this.isPointInEditableWedge(pos.x, pos.y)) return;
 
-                if (this.currentTool === 'line' && this.currentShape) {
-                    this.currentShape.points = [this.currentShape.points[0], pos];
-                    this.render();
-                    this.drawCurrentShape();
-                } else if (this.currentTool === 'circle' && this.currentShape) {
+                const snappedPos = this.snapToIntersection(pos);
+
+                this.isDrawing = true;
+                this.currentShape = {
+                    type: 'circle',
+                    center: snappedPos,
+                    radius: 0,
+                    color: this.strokeColor,
+                    width: this.strokeWidth
+                };
+            }
+
+            handleMouseMove(e) {
+                const pos = this.getMousePos(e);
+
+                if (this.currentTool === 'circle' && this.isDrawing && this.currentShape) {
                     const dx = pos.x - this.currentShape.center.x;
                     const dy = pos.y - this.currentShape.center.y;
                     this.currentShape.radius = Math.sqrt(dx * dx + dy * dy);
                     this.render();
-                    this.drawCurrentShape();
-                } else if (this.currentTool === 'bezier' && this.currentShape) {
-                    if (this.currentShape.points.length === 1) {
-                        this.currentShape.points.push(pos, pos);
-                    } else if (this.currentShape.points.length === 2) {
-                        this.currentShape.points.push(pos);
-                    } else {
-                        this.currentShape.points[this.currentShape.points.length - 1] = pos;
-                    }
+                    this.drawShapeWithSymmetry(this.currentShape, true);
+                } else if ((this.currentTool === 'line' || this.currentTool === 'bezier') && this.currentShape) {
+                    // Show preview
+                    this.previewPoint = this.snapToIntersection(pos);
                     this.render();
-                    this.drawCurrentShape();
+                    this.drawShapeWithSymmetry(this.currentShape, true);
+
+                    // Draw preview line
+                    if (this.currentShape.points.length > 0) {
+                        const lastPoint = this.currentShape.points[this.currentShape.points.length - 1];
+                        this.ctx.save();
+                        this.ctx.setLineDash([5, 5]);
+                        this.ctx.strokeStyle = '#999';
+                        this.ctx.lineWidth = 1;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(lastPoint.x, lastPoint.y);
+                        this.ctx.lineTo(this.previewPoint.x, this.previewPoint.y);
+                        this.ctx.stroke();
+                        this.ctx.restore();
+
+                        // Draw snap indicator
+                        if (!this.altKeyPressed) {
+                            this.ctx.fillStyle = '#667eea';
+                            this.ctx.beginPath();
+                            this.ctx.arc(this.previewPoint.x, this.previewPoint.y, 4, 0, 2 * Math.PI);
+                            this.ctx.fill();
+                        }
+                    }
                 }
             }
 
             handleMouseUp(e) {
-                if (!this.isDrawing) return;
+                if (this.currentTool === 'circle' && this.isDrawing && this.currentShape) {
+                    if (this.currentShape.radius > 5) {
+                        this.shapes.push(this.currentShape);
+                        this.updateIntersections();
+                    }
+                    this.resetDrawing();
+                }
+            }
 
-                if (this.currentTool === 'bezier' && this.currentShape) {
-                    if (this.currentShape.points.length < 3) {
-                        // Need at least 3 clicks for bezier
-                        return;
-                    } else if (this.currentShape.points.length === 3) {
-                        // Second click - add control point
-                        return;
+            handleClick(e) {
+                if (this.currentTool === 'circle') return; // Handled by mousedown/up
+
+                const pos = this.getMousePos(e);
+                if (!this.isPointInEditableWedge(pos.x, pos.y)) return;
+
+                const snappedPos = this.snapToIntersection(pos);
+
+                if (this.currentTool === 'line') {
+                    if (!this.currentShape) {
+                        // Start new line
+                        this.currentShape = {
+                            type: 'line',
+                            points: [snappedPos],
+                            color: this.strokeColor,
+                            width: this.strokeWidth
+                        };
+                    } else {
+                        // Complete line
+                        this.currentShape.points.push(snappedPos);
+
+                        // Clip to wedge
+                        const clipped = this.clipLineToWedge(
+                            this.currentShape.points[0],
+                            this.currentShape.points[1]
+                        );
+
+                        if (clipped) {
+                            this.currentShape.points = clipped;
+                            this.shapes.push(this.currentShape);
+                            this.updateIntersections();
+                        }
+
+                        this.resetDrawing();
+                    }
+                } else if (this.currentTool === 'bezier') {
+                    if (!this.currentShape) {
+                        // Start new bezier
+                        this.currentShape = {
+                            type: 'bezier',
+                            points: [snappedPos],
+                            color: this.strokeColor,
+                            width: this.strokeWidth
+                        };
+                        this.bezierClickCount = 1;
+                    } else {
+                        this.currentShape.points.push(snappedPos);
+                        this.bezierClickCount++;
+
+                        if (this.bezierClickCount === 3) {
+                            // Complete quadratic bezier
+                            this.shapes.push(this.currentShape);
+                            this.updateIntersections();
+                            this.resetDrawing();
+                        }
                     }
                 }
 
+                this.render();
                 if (this.currentShape) {
-                    this.shapes.push(this.currentShape);
+                    this.drawShapeWithSymmetry(this.currentShape, true);
+                }
+            }
+
+            updateIntersections() {
+                this.intersectionPoints = [];
+
+                // Add wedge boundary points
+                const wedgeAngle = this.getEditableWedgeAngle();
+                this.intersectionPoints.push(
+                    {x: this.centerX, y: this.centerY},
+                    this.angleDistanceToPoint(0, this.radius),
+                    this.angleDistanceToPoint(wedgeAngle, this.radius)
+                );
+
+                // Find intersections between all shapes
+                for (let i = 0; i < this.shapes.length; i++) {
+                    for (let j = i + 1; j < this.shapes.length; j++) {
+                        const intersections = this.findShapeIntersections(
+                            this.shapes[i],
+                            this.shapes[j]
+                        );
+                        this.intersectionPoints.push(...intersections);
+                    }
+
+                    // Intersections with wedge boundaries
+                    const boundaryIntersections = this.findWedgeBoundaryIntersections(this.shapes[i]);
+                    this.intersectionPoints.push(...boundaryIntersections);
+                }
+            }
+
+            findShapeIntersections(shape1, shape2) {
+                const intersections = [];
+
+                if (shape1.type === 'line' && shape2.type === 'line') {
+                    const p = this.lineLineIntersection(
+                        shape1.points[0], shape1.points[1],
+                        shape2.points[0], shape2.points[1]
+                    );
+                    if (p && this.isPointInEditableWedge(p.x, p.y)) {
+                        intersections.push(p);
+                    }
+                } else if (shape1.type === 'circle' && shape2.type === 'circle') {
+                    const points = this.circleCircleIntersection(
+                        shape1.center, shape1.radius,
+                        shape2.center, shape2.radius
+                    );
+                    intersections.push(...points.filter(p => this.isPointInEditableWedge(p.x, p.y)));
+                } else if (shape1.type === 'line' && shape2.type === 'circle') {
+                    const points = this.lineCircleIntersection(
+                        shape1.points[0], shape1.points[1],
+                        shape2.center, shape2.radius
+                    );
+                    intersections.push(...points.filter(p => this.isPointInEditableWedge(p.x, p.y)));
+                } else if (shape1.type === 'circle' && shape2.type === 'line') {
+                    const points = this.lineCircleIntersection(
+                        shape2.points[0], shape2.points[1],
+                        shape1.center, shape1.radius
+                    );
+                    intersections.push(...points.filter(p => this.isPointInEditableWedge(p.x, p.y)));
                 }
 
-                this.isDrawing = false;
-                this.currentShape = null;
-                this.drawingPoints = [];
-                this.render();
+                return intersections;
             }
 
-            drawCurrentShape() {
-                if (!this.currentShape) return;
+            findWedgeBoundaryIntersections(shape) {
+                const intersections = [];
+                const wedgeAngle = this.getEditableWedgeAngle();
 
-                this.drawShapeWithSymmetry(this.currentShape);
+                if (shape.type === 'line') {
+                    // Intersection with circle boundary
+                    const circlePoints = this.lineCircleIntersection(
+                        shape.points[0], shape.points[1],
+                        {x: this.centerX, y: this.centerY},
+                        this.radius
+                    );
+                    intersections.push(...circlePoints.filter(p => this.isPointInEditableWedge(p.x, p.y)));
+
+                    // Intersections with angle boundaries
+                    const ray1 = this.lineRayIntersection(shape.points[0], shape.points[1], 0);
+                    if (ray1 && this.pointToDistance(ray1.x, ray1.y) <= this.radius) {
+                        intersections.push(ray1);
+                    }
+
+                    const ray2 = this.lineRayIntersection(shape.points[0], shape.points[1], wedgeAngle);
+                    if (ray2 && this.pointToDistance(ray2.x, ray2.y) <= this.radius) {
+                        intersections.push(ray2);
+                    }
+                } else if (shape.type === 'circle') {
+                    // Intersection with circle boundary
+                    const circlePoints = this.circleCircleIntersection(
+                        shape.center, shape.radius,
+                        {x: this.centerX, y: this.centerY},
+                        this.radius
+                    );
+                    intersections.push(...circlePoints.filter(p => this.isPointInEditableWedge(p.x, p.y)));
+                }
+
+                return intersections;
             }
 
-            drawShapeWithSymmetry(shape) {
-                const wedgeAngle = (2 * Math.PI) / this.symmetryOrder;
+            lineLineIntersection(p1, p2, p3, p4) {
+                const x1 = p1.x, y1 = p1.y;
+                const x2 = p2.x, y2 = p2.y;
+                const x3 = p3.x, y3 = p3.y;
+                const x4 = p4.x, y4 = p4.y;
 
-                for (let i = 0; i < this.symmetryOrder; i++) {
-                    const rotationAngle = i * wedgeAngle;
+                const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+                if (Math.abs(denom) < 1e-10) return null;
 
-                    this.ctx.save();
-                    this.ctx.strokeStyle = shape.color;
-                    this.ctx.lineWidth = shape.width;
-                    this.ctx.lineCap = 'round';
-                    this.ctx.lineJoin = 'round';
+                const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+                const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
 
-                    if (this.symmetryType === 'radial' && i % 2 === 1) {
-                        // For radial symmetry, alternate wedges are mirrored
+                if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                    return {
+                        x: x1 + t * (x2 - x1),
+                        y: y1 + t * (y2 - y1)
+                    };
+                }
+
+                return null;
+            }
+
+            lineCircleIntersection(p1, p2, center, radius) {
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const fx = p1.x - center.x;
+                const fy = p1.y - center.y;
+
+                const a = dx*dx + dy*dy;
+                const b = 2*(fx*dx + fy*dy);
+                const c = fx*fx + fy*fy - radius*radius;
+
+                let discriminant = b*b - 4*a*c;
+                if (discriminant < 0) return [];
+
+                discriminant = Math.sqrt(discriminant);
+                const t1 = (-b - discriminant) / (2*a);
+                const t2 = (-b + discriminant) / (2*a);
+
+                const points = [];
+                if (t1 >= 0 && t1 <= 1) {
+                    points.push({
+                        x: p1.x + t1 * dx,
+                        y: p1.y + t1 * dy
+                    });
+                }
+                if (t2 >= 0 && t2 <= 1 && Math.abs(t2 - t1) > 1e-10) {
+                    points.push({
+                        x: p1.x + t2 * dx,
+                        y: p1.y + t2 * dy
+                    });
+                }
+
+                return points;
+            }
+
+            circleCircleIntersection(c1, r1, c2, r2) {
+                const dx = c2.x - c1.x;
+                const dy = c2.y - c1.y;
+                const d = Math.sqrt(dx*dx + dy*dy);
+
+                if (d > r1 + r2 || d < Math.abs(r1 - r2) || d < 1e-10) return [];
+
+                const a = (r1*r1 - r2*r2 + d*d) / (2*d);
+                const h = Math.sqrt(r1*r1 - a*a);
+
+                const px = c1.x + a * dx / d;
+                const py = c1.y + a * dy / d;
+
+                if (Math.abs(h) < 1e-10) {
+                    return [{x: px, y: py}];
+                }
+
+                return [
+                    {
+                        x: px + h * dy / d,
+                        y: py - h * dx / d
+                    },
+                    {
+                        x: px - h * dy / d,
+                        y: py + h * dx / d
+                    }
+                ];
+            }
+
+            drawShapeWithSymmetry(shape, isPreview = false) {
+                if (this.symmetryType === 'radial') {
+                    // For radial: mirror the wedge, then rotate N times
+                    const fullWedgeAngle = (2 * Math.PI) / this.symmetryOrder;
+
+                    for (let i = 0; i < this.symmetryOrder; i++) {
+                        const rotationAngle = i * fullWedgeAngle;
+
+                        // Draw original
+                        this.ctx.save();
+                        this.ctx.translate(this.centerX, this.centerY);
+                        this.ctx.rotate(rotationAngle);
+                        this.ctx.translate(-this.centerX, -this.centerY);
+                        this.drawShape(shape, isPreview);
+                        this.ctx.restore();
+
+                        // Draw mirrored
+                        this.ctx.save();
                         this.ctx.translate(this.centerX, this.centerY);
                         this.ctx.rotate(rotationAngle);
                         this.ctx.scale(1, -1);
                         this.ctx.translate(-this.centerX, -this.centerY);
-                    } else {
-                        // Standard rotation
+                        this.drawShape(shape, isPreview);
+                        this.ctx.restore();
+                    }
+                } else {
+                    // For rotational: just rotate N times
+                    const wedgeAngle = (2 * Math.PI) / this.symmetryOrder;
+
+                    for (let i = 0; i < this.symmetryOrder; i++) {
+                        const rotationAngle = i * wedgeAngle;
+
+                        this.ctx.save();
                         this.ctx.translate(this.centerX, this.centerY);
                         this.ctx.rotate(rotationAngle);
                         this.ctx.translate(-this.centerX, -this.centerY);
+                        this.drawShape(shape, isPreview);
+                        this.ctx.restore();
                     }
-
-                    this.drawShape(shape);
-                    this.ctx.restore();
                 }
             }
 
-            drawShape(shape) {
+            drawShape(shape, isPreview = false) {
+                this.ctx.strokeStyle = isPreview ? '#999' : shape.color;
+                this.ctx.lineWidth = shape.width;
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                this.ctx.setLineDash([]);
+
                 this.ctx.beginPath();
 
-                if (shape.type === 'line' && shape.points.length === 2) {
+                if (shape.type === 'line' && shape.points.length >= 2) {
                     this.ctx.moveTo(shape.points[0].x, shape.points[0].y);
                     this.ctx.lineTo(shape.points[1].x, shape.points[1].y);
-                } else if (shape.type === 'circle') {
+                } else if (shape.type === 'circle' && shape.radius > 0) {
                     this.ctx.arc(shape.center.x, shape.center.y, shape.radius, 0, 2 * Math.PI);
-                } else if (shape.type === 'bezier' && shape.points.length >= 3) {
+                } else if (shape.type === 'bezier' && shape.points.length === 3) {
                     this.ctx.moveTo(shape.points[0].x, shape.points[0].y);
-                    if (shape.points.length === 3) {
-                        this.ctx.quadraticCurveTo(
-                            shape.points[1].x, shape.points[1].y,
-                            shape.points[2].x, shape.points[2].y
-                        );
-                    } else if (shape.points.length === 4) {
-                        this.ctx.bezierCurveTo(
-                            shape.points[1].x, shape.points[1].y,
-                            shape.points[2].x, shape.points[2].y,
-                            shape.points[3].x, shape.points[3].y
-                        );
-                    }
+                    this.ctx.quadraticCurveTo(
+                        shape.points[1].x, shape.points[1].y,
+                        shape.points[2].x, shape.points[2].y
+                    );
                 }
 
                 this.ctx.stroke();
@@ -573,13 +994,41 @@
                 this.ctx.arc(this.centerX, this.centerY, this.radius, 0, 2 * Math.PI);
                 this.ctx.fill();
 
-                // Draw wedge guides (light)
+                // Draw editable wedge highlight
+                const wedgeAngle = this.getEditableWedgeAngle();
+                this.ctx.fillStyle = 'rgba(102, 126, 234, 0.1)';
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.centerX, this.centerY);
+                this.ctx.arc(this.centerX, this.centerY, this.radius, 0, wedgeAngle);
+                this.ctx.closePath();
+                this.ctx.fill();
+
+                // Draw wedge guides
+                this.ctx.strokeStyle = '#667eea';
+                this.ctx.lineWidth = 2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.centerX, this.centerY);
+                this.ctx.lineTo(
+                    this.centerX + this.radius * Math.cos(0),
+                    this.centerY + this.radius * Math.sin(0)
+                );
+                this.ctx.stroke();
+
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.centerX, this.centerY);
+                this.ctx.lineTo(
+                    this.centerX + this.radius * Math.cos(wedgeAngle),
+                    this.centerY + this.radius * Math.sin(wedgeAngle)
+                );
+                this.ctx.stroke();
+
+                // Draw all other wedge guides (light)
                 this.ctx.strokeStyle = '#e0e0e0';
                 this.ctx.lineWidth = 1;
-                const wedgeAngle = (2 * Math.PI) / this.symmetryOrder;
+                const fullWedgeAngle = (2 * Math.PI) / this.symmetryOrder;
 
-                for (let i = 0; i < this.symmetryOrder; i++) {
-                    const angle = i * wedgeAngle;
+                for (let i = 1; i < this.symmetryOrder * (this.symmetryType === 'radial' ? 2 : 1); i++) {
+                    const angle = i * (this.symmetryType === 'radial' ? fullWedgeAngle / 2 : fullWedgeAngle);
                     this.ctx.beginPath();
                     this.ctx.moveTo(this.centerX, this.centerY);
                     this.ctx.lineTo(
@@ -596,6 +1045,14 @@
                 this.ctx.arc(this.centerX, this.centerY, this.radius, 0, 2 * Math.PI);
                 this.ctx.stroke();
 
+                // Draw intersection points
+                this.ctx.fillStyle = 'rgba(102, 126, 234, 0.5)';
+                for (const point of this.intersectionPoints) {
+                    this.ctx.beginPath();
+                    this.ctx.arc(point.x, point.y, 3, 0, 2 * Math.PI);
+                    this.ctx.fill();
+                }
+
                 // Draw all shapes
                 this.shapes.forEach(shape => {
                     this.drawShapeWithSymmetry(shape);
@@ -608,28 +1065,23 @@
 
                 this.clear();
 
-                // Generate random lines within the first wedge
-                const wedgeAngle = (2 * Math.PI) / this.symmetryOrder;
+                const wedgeAngle = this.getEditableWedgeAngle();
                 const lines = [];
 
-                // Create a grid-like pattern with jitter to maximize small shape creation
-                const segments = numLines;
-
-                for (let i = 0; i < segments; i++) {
-                    // Create lines at different angles and distances
+                for (let i = 0; i < numLines; i++) {
                     const strategy = Math.random();
 
                     if (strategy < 0.4) {
-                        // Radial lines (from center outward)
-                        const baseAngle = (i / segments) * wedgeAngle;
+                        // Radial lines
+                        const baseAngle = (i / numLines) * wedgeAngle;
                         const angleJitter = (Math.random() - 0.5) * wedgeAngle * jitter;
-                        const angle = baseAngle + angleJitter;
+                        const angle = Math.max(0, Math.min(wedgeAngle, baseAngle + angleJitter));
 
                         const startDist = Math.random() * this.radius * 0.3;
                         const endDist = this.radius * (0.7 + Math.random() * 0.3);
 
-                        const start = this.wedgeToCanvas(angle, startDist);
-                        const end = this.wedgeToCanvas(angle, endDist);
+                        const start = this.angleDistanceToPoint(angle, startDist);
+                        const end = this.angleDistanceToPoint(angle, endDist);
 
                         lines.push({
                             type: 'line',
@@ -638,10 +1090,10 @@
                             width: this.strokeWidth
                         });
                     } else if (strategy < 0.7) {
-                        // Concentric arcs/circles
-                        const dist = (i / segments) * this.radius * (0.8 + Math.random() * 0.2);
+                        // Concentric circles
+                        const dist = (i / numLines) * this.radius * (0.8 + Math.random() * 0.2);
                         const distJitter = (Math.random() - 0.5) * this.radius * jitter;
-                        const radius = dist + distJitter;
+                        const radius = Math.max(10, dist + distJitter);
 
                         lines.push({
                             type: 'circle',
@@ -651,14 +1103,14 @@
                             width: this.strokeWidth
                         });
                     } else {
-                        // Diagonal/crossing lines
+                        // Diagonal lines
                         const angle1 = Math.random() * wedgeAngle;
                         const angle2 = Math.random() * wedgeAngle;
-                        const dist1 = Math.random() * this.radius;
-                        const dist2 = Math.random() * this.radius;
+                        const dist1 = 0.2 * this.radius + Math.random() * this.radius * 0.8;
+                        const dist2 = 0.2 * this.radius + Math.random() * this.radius * 0.8;
 
-                        const start = this.wedgeToCanvas(angle1, dist1);
-                        const end = this.wedgeToCanvas(angle2, dist2);
+                        const start = this.angleDistanceToPoint(angle1, dist1);
+                        const end = this.angleDistanceToPoint(angle2, dist2);
 
                         lines.push({
                             type: 'line',
@@ -670,17 +1122,20 @@
                 }
 
                 this.shapes = lines;
+                this.updateIntersections();
                 this.render();
             }
 
             clear() {
                 this.shapes = [];
-                this.render();
+                this.intersectionPoints = [];
+                this.resetDrawing();
             }
 
             undo() {
                 if (this.shapes.length > 0) {
                     this.shapes.pop();
+                    this.updateIntersections();
                     this.render();
                 }
             }
@@ -695,51 +1150,34 @@
                 svg += `  <desc>Created with Kaleidoscope Designer</desc>\n`;
                 svg += `  <g id="pattern">\n`;
 
-                const wedgeAngle = (2 * Math.PI) / this.symmetryOrder;
+                if (this.symmetryType === 'radial') {
+                    const fullWedgeAngle = (2 * Math.PI) / this.symmetryOrder;
 
-                this.shapes.forEach(shape => {
-                    for (let i = 0; i < this.symmetryOrder; i++) {
-                        const rotationAngle = (i * wedgeAngle * 180) / Math.PI;
-                        const isMirrored = this.symmetryType === 'radial' && i % 2 === 1;
+                    this.shapes.forEach(shape => {
+                        for (let i = 0; i < this.symmetryOrder; i++) {
+                            const rotationAngle = (i * fullWedgeAngle * 180) / Math.PI;
 
-                        let transform = `rotate(${rotationAngle} ${this.centerX} ${this.centerY})`;
-                        if (isMirrored) {
-                            transform += ` scale(1, -1) translate(0, ${-2 * this.centerY})`;
+                            // Original
+                            svg += this.shapeToSVG(shape, lineWidth, rotationAngle, false);
+                            // Mirrored
+                            svg += this.shapeToSVG(shape, lineWidth, rotationAngle, true);
                         }
+                    });
+                } else {
+                    const wedgeAngle = (2 * Math.PI) / this.symmetryOrder;
 
-                        if (shape.type === 'line' && shape.points.length === 2) {
-                            svg += `    <line x1="${shape.points[0].x}" y1="${shape.points[0].y}" `;
-                            svg += `x2="${shape.points[1].x}" y2="${shape.points[1].y}" `;
-                            svg += `stroke="${shape.color}" stroke-width="${lineWidth}" `;
-                            svg += `stroke-linecap="round" fill="none" `;
-                            svg += `transform="${transform}" />\n`;
-                        } else if (shape.type === 'circle') {
-                            svg += `    <circle cx="${shape.center.x}" cy="${shape.center.y}" `;
-                            svg += `r="${shape.radius}" `;
-                            svg += `stroke="${shape.color}" stroke-width="${lineWidth}" `;
-                            svg += `fill="none" />\n`;
-                        } else if (shape.type === 'bezier' && shape.points.length >= 3) {
-                            let pathData = `M ${shape.points[0].x} ${shape.points[0].y} `;
-                            if (shape.points.length === 3) {
-                                pathData += `Q ${shape.points[1].x} ${shape.points[1].y}, `;
-                                pathData += `${shape.points[2].x} ${shape.points[2].y}`;
-                            } else if (shape.points.length === 4) {
-                                pathData += `C ${shape.points[1].x} ${shape.points[1].y}, `;
-                                pathData += `${shape.points[2].x} ${shape.points[2].y}, `;
-                                pathData += `${shape.points[3].x} ${shape.points[3].y}`;
-                            }
-                            svg += `    <path d="${pathData}" `;
-                            svg += `stroke="${shape.color}" stroke-width="${lineWidth}" `;
-                            svg += `stroke-linecap="round" fill="none" `;
-                            svg += `transform="${transform}" />\n`;
+                    this.shapes.forEach(shape => {
+                        for (let i = 0; i < this.symmetryOrder; i++) {
+                            const rotationAngle = (i * wedgeAngle * 180) / Math.PI;
+                            svg += this.shapeToSVG(shape, lineWidth, rotationAngle, false);
                         }
-                    }
-                });
+                    });
+                }
 
                 svg += `  </g>\n`;
                 svg += `</svg>`;
 
-                // Download the SVG
+                // Download
                 const blob = new Blob([svg], { type: 'image/svg+xml' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -750,9 +1188,44 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             }
+
+            shapeToSVG(shape, lineWidth, rotationAngle, mirror) {
+                let transform = `rotate(${rotationAngle} ${this.centerX} ${this.centerY})`;
+                if (mirror) {
+                    transform += ` scale(1, -1) translate(0, ${-2 * this.centerY})`;
+                }
+
+                let svg = '';
+
+                if (shape.type === 'line' && shape.points.length === 2) {
+                    svg += `    <line x1="${shape.points[0].x}" y1="${shape.points[0].y}" `;
+                    svg += `x2="${shape.points[1].x}" y2="${shape.points[1].y}" `;
+                    svg += `stroke="${shape.color}" stroke-width="${lineWidth}" `;
+                    svg += `stroke-linecap="round" fill="none" `;
+                    svg += `transform="${transform}" />\n`;
+                } else if (shape.type === 'circle') {
+                    if (!mirror) { // Only draw circle once (not mirrored)
+                        svg += `    <circle cx="${shape.center.x}" cy="${shape.center.y}" `;
+                        svg += `r="${shape.radius}" `;
+                        svg += `stroke="${shape.color}" stroke-width="${lineWidth}" `;
+                        svg += `fill="none" />\n`;
+                    }
+                } else if (shape.type === 'bezier' && shape.points.length === 3) {
+                    let pathData = `M ${shape.points[0].x} ${shape.points[0].y} `;
+                    pathData += `Q ${shape.points[1].x} ${shape.points[1].y}, `;
+                    pathData += `${shape.points[2].x} ${shape.points[2].y}`;
+
+                    svg += `    <path d="${pathData}" `;
+                    svg += `stroke="${shape.color}" stroke-width="${lineWidth}" `;
+                    svg += `stroke-linecap="round" fill="none" `;
+                    svg += `transform="${transform}" />\n`;
+                }
+
+                return svg;
+            }
         }
 
-        // Initialize the application
+        // Initialize
         const app = new KaleidoscopeDesigner();
     </script>
 </body>
