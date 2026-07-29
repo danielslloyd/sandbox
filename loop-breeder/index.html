@@ -1,0 +1,2121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loop Breeder — evolve seamless animation loops</title>
+<style>
+:root{
+  --bg:#0d0e12;
+  --panel:#14161c;
+  --panel-2:#1a1d25;
+  --line:#272b36;
+  --line-2:#343a48;
+  --text:#d7dae3;
+  --dim:#7c8496;
+  --dimmer:#565e70;
+  --gold:#e0b978;
+  --teal:#7fd1c1;
+  --kill:#c96a6a;
+  --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;min-height:100vh}
+body{
+  background:var(--bg);color:var(--text);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  overflow:hidden;
+}
+button,select,input,textarea{font-family:inherit;font-size:12px;color:var(--text)}
+button{
+  background:var(--panel-2);border:1px solid var(--line);border-radius:5px;
+  padding:5px 10px;cursor:pointer;transition:background .12s,border-color .12s;
+}
+button:hover{background:#232733;border-color:var(--line-2)}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.4;cursor:not-allowed;transform:none}
+button.primary{background:#3a2f1a;border-color:#6d5730;color:var(--gold)}
+button.primary:hover:not(:disabled){background:#4a3c21}
+button.ghost{background:transparent}
+button:focus-visible,input:focus-visible,textarea:focus-visible{
+  outline:1px solid var(--gold);outline-offset:1px}
+a{color:var(--teal)}
+.chip{
+  font-family:var(--mono);font-size:11px;color:var(--dim);
+  background:var(--panel-2);border:1px solid var(--line);border-radius:4px;padding:3px 7px;
+  white-space:nowrap;
+}
+.chip b{color:var(--gold);font-weight:600}
+
+#app{display:flex;flex-direction:column;height:100vh}
+header{
+  display:flex;align-items:center;gap:10px;padding:8px 14px;flex:none;
+  background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap;
+}
+header h1{font-size:14px;font-weight:600;letter-spacing:.02em}
+header h1 span{color:var(--gold)}
+header .sub{color:var(--dim);font-size:11px}
+.spacer{flex:1}
+
+#body{display:flex;flex:1;min-height:0}
+#pop-wrap{flex:1;min-width:0;display:flex;flex-direction:column}
+#pop-bar{
+  display:flex;align-items:center;gap:8px;padding:7px 12px;flex:none;
+  border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap;
+}
+#pop-bar label{color:var(--dim);font-size:11px;display:flex;align-items:center;gap:5px}
+#pop-bar input[type=range]{width:74px;accent-color:var(--gold)}
+#pop{
+  flex:1;overflow-y:auto;padding:14px;
+  display:grid;gap:12px;align-content:start;
+  grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+}
+
+/* ---------- population tile ---------- */
+.tile{
+  position:relative;background:#000;border:1px solid var(--line);
+  border-radius:6px;overflow:hidden;cursor:pointer;
+  transition:border-color .12s,transform .12s;
+}
+.tile:hover{border-color:var(--line-2)}
+.tile.keep{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+.tile.dead{opacity:.28;filter:saturate(0)}
+.tile canvas{display:block;width:100%;height:auto;aspect-ratio:1}
+.tile .meta{
+  position:absolute;left:0;right:0;bottom:0;
+  padding:5px 7px;font:10px/1.35 var(--mono);
+  color:#c9cfdc;background:linear-gradient(transparent,rgba(0,0,0,.88) 45%);
+  pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.tile .gen{
+  position:absolute;top:6px;left:6px;font:10px var(--mono);
+  background:rgba(0,0,0,.6);border-radius:3px;padding:1px 5px;color:var(--dim);
+}
+.tile .acts{position:absolute;top:5px;right:5px;display:flex;gap:4px;opacity:0;transition:opacity .12s}
+.tile:hover .acts,.tile.keep .acts{opacity:1}
+.tile .acts button{padding:2px 7px;font-size:11px;background:rgba(10,12,16,.85)}
+.tile .err{
+  position:absolute;inset:0;padding:10px;font:10px/1.4 var(--mono);
+  color:#ff9b9b;background:#2a1114;overflow:auto;
+}
+
+/* ---------- lineage rail ---------- */
+#tree-wrap{
+  width:320px;flex:none;border-left:1px solid var(--line);
+  background:var(--panel);display:flex;flex-direction:column;
+}
+#tree-wrap.hidden{display:none}
+#tree-bar{
+  display:flex;align-items:center;gap:8px;padding:7px 12px;flex:none;
+  border-bottom:1px solid var(--line);
+}
+#tree-bar h2{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--gold)}
+#tree{flex:1;overflow:auto;padding:10px}
+#tree svg{display:block}
+#tree .nodebox{cursor:pointer}
+#tree .nodebox rect{fill:#0b0c10;stroke:var(--line-2);stroke-width:1}
+#tree .nodebox.keep rect{stroke:var(--gold);stroke-width:2}
+#tree .nodebox.pruned{opacity:.42}
+#tree .nodebox.live rect{stroke:var(--teal)}
+#tree .edge{stroke:var(--line-2);fill:none;stroke-width:1.2}
+#tree-empty{color:var(--dimmer);font-size:11.5px;padding:14px;line-height:1.6}
+
+/* ---------- detail overlay ---------- */
+#detail{
+  position:fixed;inset:0;z-index:40;background:rgba(6,7,10,.86);
+  display:none;align-items:center;justify-content:center;padding:24px;
+}
+#detail.open{display:flex}
+#detail-card{
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  width:min(1080px,100%);max-height:100%;display:flex;overflow:hidden;
+}
+#detail-left{padding:16px;flex:none;display:flex;flex-direction:column;gap:10px}
+#detail-canvas{
+  width:420px;height:420px;max-width:46vw;max-height:46vw;
+  background:#000;border-radius:4px;display:block;
+}
+#detail-right{
+  flex:1;min-width:0;border-left:1px solid var(--line);
+  display:flex;flex-direction:column;
+}
+#detail-head{
+  display:flex;align-items:center;gap:8px;padding:12px 16px;
+  border-bottom:1px solid var(--line);
+}
+#detail-head h2{font-size:13px}
+#detail-head .sub{font:11px var(--mono);color:var(--dim)}
+#detail-body{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:16px}
+.section h3{
+  font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--gold);margin-bottom:8px;
+}
+.genes{display:flex;flex-direction:column;gap:5px}
+.gene{
+  display:grid;grid-template-columns:62px 1fr auto;gap:9px;align-items:center;
+  background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:5px 8px;
+}
+.gene .axis{font:10px var(--mono);color:var(--dim);text-transform:uppercase}
+.gene .val{font:11.5px var(--mono);color:var(--text);overflow:hidden;text-overflow:ellipsis}
+.gene .val em{color:var(--dimmer);font-style:normal}
+.gene button{padding:2px 8px;font-size:11px}
+#detail-code{
+  width:100%;min-height:200px;flex:1;background:#0f1116;color:#c9cfdc;
+  border:1px solid var(--line);border-radius:5px;padding:10px;
+  font:11px/1.6 var(--mono);white-space:pre;overflow:auto;resize:vertical;
+}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.note{
+  border-left:2px solid var(--line-2);padding:2px 0 2px 10px;
+  color:var(--dim);font-size:11.5px;line-height:1.6;
+}
+textarea.paste{
+  width:100%;height:120px;background:#0f1116;color:#c9cfdc;
+  border:1px solid var(--line);border-radius:5px;padding:9px;
+  font:11px/1.5 var(--mono);resize:vertical;
+}
+
+/* ---------- help ---------- */
+#help{
+  position:fixed;inset:0;z-index:50;background:rgba(6,7,10,.9);
+  display:none;align-items:center;justify-content:center;padding:24px;
+}
+#help.open{display:flex}
+#help-card{
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  width:min(760px,100%);max-height:100%;overflow-y:auto;padding:22px 26px;
+}
+#help-card h2{font-size:15px;margin-bottom:4px}
+#help-card h3{
+  font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--gold);margin:18px 0 7px;
+}
+#help-card p{color:#aeb5c4;margin:7px 0;line-height:1.65;font-size:12.5px}
+#help-card code{
+  font-family:var(--mono);background:var(--panel-2);border:1px solid var(--line);
+  border-radius:3px;padding:1px 5px;color:var(--gold);font-size:11px;
+}
+#help-card .grid{display:grid;grid-template-columns:minmax(120px,auto) 1fr;gap:5px 14px;align-items:baseline}
+#help-card .grid div:nth-child(odd){font:11px var(--mono);color:var(--teal)}
+#help-card .grid div:nth-child(even){color:#98a0b0;font-size:12px}
+
+@media (max-width:900px){
+  #tree-wrap{position:fixed;right:0;top:0;bottom:0;z-index:30;box-shadow:-8px 0 30px rgba(0,0,0,.5)}
+  #detail-card{flex-direction:column;overflow-y:auto}
+  #detail-right{border-left:none;border-top:1px solid var(--line)}
+  #detail-canvas{width:min(420px,80vw);height:min(420px,80vw);max-width:none;max-height:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Loop<span>Breeder</span></h1>
+    <span class="sub">select what you like · prune the rest · let it mutate</span>
+    <span class="spacer"></span>
+    <span class="chip">gen <b id="gen-n">0</b></span>
+    <span class="chip"><b id="keep-n">0</b> kept</span>
+    <span class="chip"><b id="tree-n">0</b> in tree</span>
+    <button id="btn-help">How this works</button>
+  </header>
+
+  <div id="body">
+    <div id="pop-wrap">
+      <div id="pop-bar">
+        <button id="btn-seed">↺ New population</button>
+        <button id="btn-breed" class="primary">Breed from selection →</button>
+        <label title="How much of the genome changes in each child">
+          mutation <input type="range" id="rate" min="10" max="90" step="5" value="35">
+          <span class="chip" id="rate-v">35%</span>
+        </label>
+        <label title="How many tiles in each generation">
+          size <input type="range" id="popsize" min="6" max="24" step="2" value="12">
+          <span class="chip" id="popsize-v">12</span>
+        </label>
+        <span class="spacer"></span>
+        <button id="btn-tree" class="ghost">Hide lineage</button>
+        <button id="btn-save" class="ghost">Export</button>
+        <button id="btn-load" class="ghost">Import</button>
+        <button id="btn-reset" class="ghost">Clear</button>
+      </div>
+      <div id="pop"></div>
+    </div>
+
+    <div id="tree-wrap">
+      <div id="tree-bar">
+        <h2>Lineage</h2>
+        <span class="spacer"></span>
+        <span class="chip" id="tree-hint">click a node to revisit</span>
+      </div>
+      <div id="tree"><div id="tree-empty"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="detail">
+  <div id="detail-card">
+    <div id="detail-left">
+      <canvas id="detail-canvas" width="420" height="420"></canvas>
+      <div class="row">
+        <button id="d-breed" class="primary">Breed a generation from this</button>
+        <button id="d-keep">Keep</button>
+      </div>
+    </div>
+    <div id="detail-right">
+      <div id="detail-head">
+        <h2 id="d-title">—</h2>
+        <span class="sub" id="d-sub"></span>
+        <span class="spacer"></span>
+        <button id="d-close">Close</button>
+      </div>
+      <div id="detail-body"></div>
+    </div>
+  </div>
+</div>
+
+<div id="help"><div id="help-card"></div></div>
+<script>
+/* =====================================================================
+   LoopLab — engine
+   A small Processing-flavoured drawing layer on top of Canvas2D, plus
+   the two things that make a "bleuje" loop work:
+     1. a 4D noise field, so noise can be sampled on a circle in time
+        and therefore repeats exactly (see loopNoise);
+     2. a motion-blur accumulator that averages several sub-frames per
+        displayed frame (the beesandbombs template, explained at
+        https://bleuje.com/tutorial6/).
+   ===================================================================== */
+
+/* ---------- seeded RNG (mulberry32) ---------- */
+function makeRng(seed){
+  let a = (seed >>> 0) || 1;
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let x = Math.imul(a ^ (a >>> 15), 1 | a);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ---------- 4D Perlin noise ----------
+   4 dimensions matter: with 2 spatial inputs you still have 2 left to
+   walk a circle in, which is what turns noise into a perfect loop.     */
+const NoiseField = (function(){
+  let perm = new Uint8Array(512), octaves = 4, falloff = 0.5;
+
+  function seed(s){
+    const rnd = makeRng(s), p = new Uint8Array(256);
+    for(let i=0;i<256;i++) p[i] = i;
+    for(let i=255;i>0;i--){                       // Fisher-Yates
+      const j = (rnd()*(i+1))|0;
+      const tmp = p[i]; p[i] = p[j]; p[j] = tmp;
+    }
+    for(let i=0;i<512;i++) perm[i] = p[i & 255];
+  }
+  seed(1337);
+
+  const fade = t => t*t*t*(t*(t*6-15)+10);
+  const lerp = (a,b,k) => a + k*(b-a);
+
+  // Ken Perlin's 4D gradient: 32 directions, picked by the low 5 bits.
+  function grad(h,x,y,z,w){
+    h &= 31;
+    const u = h < 24 ? x : y;
+    const v = h < 16 ? y : z;
+    const s = h <  8 ? z : w;
+    return ((h&1)?-u:u) + ((h&2)?-v:v) + ((h&4)?-s:s);
+  }
+
+  function raw(x,y,z,w){
+    const X=Math.floor(x)&255, Y=Math.floor(y)&255,
+          Z=Math.floor(z)&255, W=Math.floor(w)&255;
+    x-=Math.floor(x); y-=Math.floor(y); z-=Math.floor(z); w-=Math.floor(w);
+    const u=fade(x), v=fade(y), s=fade(z), r=fade(w);
+
+    const A =perm[X]+Y,    AA=perm[A]+Z,  AB=perm[A+1]+Z;
+    const B =perm[X+1]+Y,  BA=perm[B]+Z,  BB=perm[B+1]+Z;
+    const AAA=perm[AA]+W, AAB=perm[AA+1]+W, ABA=perm[AB]+W, ABB=perm[AB+1]+W;
+    const BAA=perm[BA]+W, BAB=perm[BA+1]+W, BBA=perm[BB]+W, BBB=perm[BB+1]+W;
+
+    return lerp(
+      lerp(
+        lerp(lerp(grad(perm[AAA],  x,  y,  z,  w),
+                  grad(perm[BAA],x-1,  y,  z,  w), u),
+             lerp(grad(perm[ABA],  x,y-1,  z,  w),
+                  grad(perm[BBA],x-1,y-1,  z,  w), u), v),
+        lerp(lerp(grad(perm[AAB],  x,  y,z-1,  w),
+                  grad(perm[BAB],x-1,  y,z-1,  w), u),
+             lerp(grad(perm[ABB],  x,y-1,z-1,  w),
+                  grad(perm[BBB],x-1,y-1,z-1,  w), u), v), s),
+      lerp(
+        lerp(lerp(grad(perm[AAA+1],  x,  y,  z,w-1),
+                  grad(perm[BAA+1],x-1,  y,  z,w-1), u),
+             lerp(grad(perm[ABA+1],  x,y-1,  z,w-1),
+                  grad(perm[BBA+1],x-1,y-1,  z,w-1), u), v),
+        lerp(lerp(grad(perm[AAB+1],  x,  y,z-1,w-1),
+                  grad(perm[BAB+1],x-1,  y,z-1,w-1), u),
+             lerp(grad(perm[ABB+1],  x,y-1,z-1,w-1),
+                  grad(perm[BBB+1],x-1,y-1,z-1,w-1), u), v), s), r);
+  }
+
+  // Fractal sum, matching Processing's default 4 octaves / 0.5 falloff.
+  function fbm(x,y,z,w){
+    let sum=0, amp=1, norm=0, f=1;
+    for(let i=0;i<octaves;i++){
+      sum  += amp * raw(x*f, y*f, z*f, w*f);
+      norm += amp;
+      amp  *= falloff;
+      f    *= 2;
+    }
+    return sum / (norm || 1);
+  }
+
+  return {
+    seed,
+    detail(o,f){ octaves = Math.max(1, o|0); if(f !== undefined) falloff = f; },
+    // Processing-style: 0..1
+    noise(x, y=0, z=0, w=0){
+      return Math.min(1, Math.max(0, fbm(x,y,z,w) * 1.05 + 0.5));
+    },
+    // signed: -1..1
+    snoise(x, y=0, z=0, w=0){
+      return Math.min(1, Math.max(-1, fbm(x,y,z,w) * 2.1));
+    }
+  };
+})();
+
+/* ---------- colour helpers ---------- */
+function hsb2rgb(h,s,v){
+  h = ((h % 1) + 1) % 1;
+  const i = Math.floor(h*6), f = h*6 - i;
+  const p = v*(1-s), q = v*(1-f*s), r = v*(1-(1-f)*s);
+  let R,G,B;
+  switch(i % 6){
+    case 0: R=v; G=r; B=p; break;
+    case 1: R=q; G=v; B=p; break;
+    case 2: R=p; G=v; B=r; break;
+    case 3: R=p; G=q; B=v; break;
+    case 4: R=r; G=p; B=v; break;
+    default:R=v; G=p; B=q;
+  }
+  return [Math.round(R*255), Math.round(G*255), Math.round(B*255)];
+}
+
+/* =====================================================================
+   The sketch API. Everything here is visible as a bare name inside a
+   sketch (the sketch body is evaluated inside `with(API)`).
+   ===================================================================== */
+function createAPI(){
+  let ctx = null;                     // current drawing target
+  let W = 540, H = 540;
+  // sketches always draw in their own W x H space; baseScale lets a
+  // caller render that into a smaller canvas without touching the sketch
+  let baseScale = 1;
+
+  // drawing state that Canvas2D doesn't track for us
+  let doFill = true, doStroke = true;
+  let cmMode = 'rgb', cmA = 255, cmB = 255, cmC = 255, cmAlpha = 255;
+  let rectM = 'corner', ellipseM = 'center';
+  let vtx = null, vtxKind = null;
+  const stack = [];
+
+  let rnd = makeRng(12345);
+
+  // Particle sketches call stroke(brightness) thousands of times per
+  // frame, so the plain-grey case gets a lookup table instead of a
+  // fresh rgba() string every time.
+  const GREY = [];
+  for(let i = 0; i < 256; i++) GREY[i] = 'rgb(' + i + ',' + i + ',' + i + ')';
+
+  function css(args){
+    if(args.length === 0) return '#000';
+    const v = args[0];
+    if(typeof v === 'string') return v;
+    if(args.length === 1 && cmMode === 'rgb' && cmA === 255){
+      const i = v < 0 ? 0 : (v > 255 ? 255 : (v + 0.5) | 0);
+      return GREY[i];
+    }
+
+    let r,g,b,a = 1;
+    if(args.length <= 2){
+      if(cmMode === 'hsb'){
+        const c = hsb2rgb(0, 0, v/cmC); r=c[0]; g=c[1]; b=c[2];
+      } else {
+        r = g = b = Math.round(v/cmA*255);
+      }
+      if(args.length === 2) a = args[1]/cmAlpha;
+    } else {
+      if(cmMode === 'hsb'){
+        const c = hsb2rgb(args[0]/cmA, args[1]/cmB, args[2]/cmC);
+        r=c[0]; g=c[1]; b=c[2];
+      } else {
+        r = Math.round(args[0]/cmA*255);
+        g = Math.round(args[1]/cmB*255);
+        b = Math.round(args[2]/cmC*255);
+      }
+      if(args.length >= 4) a = args[3]/cmAlpha;
+    }
+    a = Math.min(1, Math.max(0, a));
+    return 'rgba('+r+','+g+','+b+','+a+')';
+  }
+
+  function paint(){
+    if(doFill)   ctx.fill();
+    if(doStroke) ctx.stroke();
+  }
+
+  const API = {
+    /* --- values the runner rewrites every sub-frame --- */
+    t: 0, c: 0, frameCount: 0, width: W, height: H,
+    mouseX: 0, mouseY: 0,
+
+    /* --- constants --- */
+    PI: Math.PI, TWO_PI: Math.PI*2, TAU: Math.PI*2,
+    HALF_PI: Math.PI/2, QUARTER_PI: Math.PI/4,
+    CENTER:'center', CORNER:'corner', CORNERS:'corners', RADIUS:'radius',
+    CLOSE:'close', OPEN:'open',
+    LEFT:'left', RIGHT:'right', TOP:'top', BOTTOM:'bottom', BASELINE:'baseline',
+    RGB:'rgb', HSB:'hsb',
+    BUTT:'butt', ROUND:'round', SQUARE:'square', PIE:'pie',
+    BLEND:'source-over', ADD:'lighter', SCREEN:'screen',
+    MULTIPLY:'multiply', DIFFERENCE:'difference',
+
+    /* --- maths (Processing names) --- */
+    abs:Math.abs, min:Math.min, max:Math.max, floor:Math.floor, ceil:Math.ceil,
+    round:Math.round, pow:Math.pow, sqrt:Math.sqrt, exp:Math.exp, log:Math.log,
+    sin:Math.sin, cos:Math.cos, tan:Math.tan, atan:Math.atan, atan2:Math.atan2,
+    asin:Math.asin, acos:Math.acos, sign:Math.sign, hypot:Math.hypot,
+    sq: x => x*x,
+    radians: d => d*Math.PI/180,
+    degrees: r => r*180/Math.PI,
+    map: (v,a,b,c,d) => c + (d-c)*((v-a)/(b-a)),
+    lerp: (a,b,k) => a + (b-a)*k,
+    norm: (v,a,b) => (v-a)/(b-a),
+    constrain: (v,a,b) => v<a?a:(v>b?b:v),
+    dist: (x1,y1,x2,y2) => Math.hypot(x2-x1, y2-y1),
+
+    /* --- randomness --- */
+    randomSeed(s){ rnd = makeRng(s); },
+    random(a,b){
+      if(a === undefined) return rnd();
+      if(b === undefined) return rnd()*a;
+      return a + rnd()*(b-a);
+    },
+    randomGaussian(){
+      let u=0, v=0;
+      while(u === 0) u = rnd();
+      while(v === 0) v = rnd();
+      return Math.sqrt(-2*Math.log(u)) * Math.cos(Math.PI*2*v);
+    },
+    shuffle(arr){
+      const a = arr.slice();
+      for(let i=a.length-1;i>0;i--){
+        const j = (rnd()*(i+1))|0;
+        const tmp=a[i]; a[i]=a[j]; a[j]=tmp;
+      }
+      return a;
+    },
+
+    /* --- noise --- */
+    noise:  (...a) => NoiseField.noise(...a),
+    snoise: (...a) => NoiseField.snoise(...a),
+    noiseSeed: s => NoiseField.seed(s),
+    noiseDetail: (o,f) => NoiseField.detail(o,f),
+
+    /* --- the loop toolkit --------------------------------------------
+       loopNoise walks a circle through the 3rd and 4th noise dimensions,
+       so the value at time 1 is literally the value at time 0.
+       ease is beesandbombs' power easing: g=1 linear, g>1 snappier.
+       mod1/pingpong keep phases inside a single period.               */
+    loopNoise(x, y, time, r = 1){
+      return NoiseField.noise(x, y,
+        r*Math.cos(Math.PI*2*time) + 12.7,
+        r*Math.sin(Math.PI*2*time) + 4.3);
+    },
+    loopSnoise(x, y, time, r = 1){
+      return NoiseField.snoise(x, y,
+        r*Math.cos(Math.PI*2*time) + 12.7,
+        r*Math.sin(Math.PI*2*time) + 4.3);
+    },
+    ease(p, g = 3){
+      if(g === 1) return p;
+      return p < 0.5 ? 0.5*Math.pow(2*p, g)
+                     : 1 - 0.5*Math.pow(2*(1-p), g);
+    },
+    mod1: x => ((x % 1) + 1) % 1,
+    pingpong: p => 1 - Math.abs(2*(((p % 1)+1)%1) - 1),
+
+    /* --- canvas state --- */
+    background(...a){
+      ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = css(a);
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.restore();
+    },
+    fill(...a){ doFill = true; ctx.fillStyle = css(a); },
+    noFill(){ doFill = false; },
+    stroke(...a){ doStroke = true; ctx.strokeStyle = css(a); },
+    noStroke(){ doStroke = false; },
+    strokeWeight(w){ ctx.lineWidth = w; },
+    strokeCap(k){ ctx.lineCap = k === 'center' ? 'round' : (k || 'round'); },
+    strokeJoin(k){ ctx.lineJoin = k || 'round'; },
+    colorMode(m, a=255, b, c, al){
+      cmMode = m;
+      cmA = a; cmB = b === undefined ? a : b; cmC = c === undefined ? a : c;
+      cmAlpha = al === undefined ? a : al;
+    },
+    color: (...a) => css(a),
+    rectMode(m){ rectM = m; },
+    ellipseMode(m){ ellipseM = m; },
+    blendMode(m){ ctx.globalCompositeOperation = m; },
+    alpha(v){ ctx.globalAlpha = v; },
+
+    push(){
+      ctx.save();
+      stack.push([doFill, doStroke, rectM, ellipseM]);
+    },
+    pop(){
+      ctx.restore();
+      const s = stack.pop();
+      if(s){ doFill=s[0]; doStroke=s[1]; rectM=s[2]; ellipseM=s[3]; }
+    },
+    translate(x,y){ ctx.translate(x,y); },
+    rotate(a){ ctx.rotate(a); },
+    scale(x,y){ ctx.scale(x, y === undefined ? x : y); },
+    shearX(a){ ctx.transform(1,0,Math.tan(a),1,0,0); },
+    shearY(a){ ctx.transform(1,Math.tan(a),0,1,0,0); },
+    resetMatrix(){ ctx.setTransform(1,0,0,1,0,0); },
+    clip(x,y,w,h){ ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip(); },
+
+    /* --- shapes --- */
+    line(x1,y1,x2,y2){
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      if(doStroke) ctx.stroke();
+    },
+    // Points are the workhorse of particle sketches, so the small case
+    // takes a much cheaper path than building a circular path.
+    point(x,y){
+      if(!doStroke) return;
+      const w = Math.max(ctx.lineWidth, 0.1);
+      const f = ctx.fillStyle;
+      ctx.fillStyle = ctx.strokeStyle;
+      if(w <= 2.5) ctx.fillRect(x-w/2, y-w/2, w, w);
+      else { ctx.beginPath(); ctx.arc(x,y,w/2,0,Math.PI*2); ctx.fill(); }
+      ctx.fillStyle = f;
+    },
+    rect(x,y,w,h,r){
+      let X=x, Y=y, Wd=w, Ht=h===undefined?w:h;
+      if(rectM === 'center'){ X = x-Wd/2; Y = y-Ht/2; }
+      else if(rectM === 'radius'){ X = x-Wd; Y = y-Ht; Wd*=2; Ht*=2; }
+      else if(rectM === 'corners'){ Wd = w-x; Ht = Ht-y; }
+      ctx.beginPath();
+      if(r) ctx.roundRect(X,Y,Wd,Ht,r); else ctx.rect(X,Y,Wd,Ht);
+      paint();
+    },
+    square(x,y,s,r){ API.rect(x,y,s,s,r); },
+    ellipse(x,y,w,h){
+      let a = w/2, b = (h===undefined?w:h)/2, X=x, Y=y;
+      if(ellipseM === 'corner'){ X = x+a; Y = y+b; }
+      else if(ellipseM === 'radius'){ a = w; b = (h===undefined?w:h); }
+      ctx.beginPath(); ctx.ellipse(X,Y,Math.abs(a),Math.abs(b),0,0,Math.PI*2);
+      paint();
+    },
+    circle(x,y,d){ API.ellipse(x,y,d,d); },
+    arc(x,y,w,h,a1,a2,mode){
+      ctx.beginPath();
+      if(mode === 'pie'){ ctx.moveTo(x,y); }
+      ctx.ellipse(x,y,Math.abs(w)/2,Math.abs(h)/2,0,a1,a2);
+      if(mode === 'close' || mode === 'pie') ctx.closePath();
+      paint();
+    },
+    triangle(x1,y1,x2,y2,x3,y3){
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.lineTo(x3,y3); ctx.closePath(); paint();
+    },
+    quad(x1,y1,x2,y2,x3,y3,x4,y4){
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.lineTo(x3,y3); ctx.lineTo(x4,y4); ctx.closePath(); paint();
+    },
+    bezier(x1,y1,cx1,cy1,cx2,cy2,x2,y2){
+      ctx.beginPath(); ctx.moveTo(x1,y1);
+      ctx.bezierCurveTo(cx1,cy1,cx2,cy2,x2,y2);
+      if(doStroke) ctx.stroke();
+    },
+
+    beginShape(kind){ vtx = []; vtxKind = kind; ctx.beginPath(); },
+    vertex(x,y){
+      if(!vtx) return;
+      if(vtx.length === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      vtx.push(x,y);
+    },
+    endShape(mode){
+      if(!vtx) return;
+      if(mode === 'close') ctx.closePath();
+      if(mode === 'close' && doFill) ctx.fill();
+      else if(doFill && vtxKind === 'fill') ctx.fill();
+      if(doStroke) ctx.stroke();
+      vtx = null; vtxKind = null;
+    },
+
+    /* --- text --- */
+    textSize(s){
+      const m = /(\d+(?:\.\d+)?)px\s+(.*)/.exec(ctx.font) ;
+      ctx.font = s + 'px ' + (m ? m[2] : 'monospace');
+    },
+    textFont(f){
+      const m = /(\d+(?:\.\d+)?)px/.exec(ctx.font);
+      ctx.font = (m ? m[1] : '12') + 'px ' + f;
+    },
+    textAlign(h, v){
+      ctx.textAlign = h || 'left';
+      ctx.textBaseline = v === 'center' ? 'middle' : (v || 'alphabetic');
+    },
+    text(str,x,y){
+      if(doFill)   ctx.fillText(String(str),x,y);
+      if(doStroke && !doFill) ctx.strokeText(String(str),x,y);
+    },
+    textWidth(str){ return ctx.measureText(String(str)).width; },
+
+    /* --- internals used by the runner (not documented to sketches) --- */
+    __bind(c, w, h, scale){
+      ctx = c; W = w; H = h; baseScale = scale || 1;
+      API.width = w; API.height = h;
+      doFill = true; doStroke = true;
+      rectM = 'corner'; ellipseM = 'center';
+      cmMode='rgb'; cmA=cmB=cmC=cmAlpha=255;
+      stack.length = 0; vtx = null;
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    },
+    // point the API at a different canvas without resetting style state
+    __use(c, scale){ ctx = c; baseScale = scale || 1; },
+    __frameReset(){
+      ctx.setTransform(baseScale, 0, 0, baseScale, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      doFill = true; doStroke = true;
+      rectM = 'corner'; ellipseM = 'center';
+      stack.length = 0; vtx = null;
+    }
+  };
+  return API;
+}</script>
+<script>
+/* =====================================================================
+   THE GENOME
+   ---------------------------------------------------------------------
+   An animation is described by five independent genes:
+
+     layout   where the elements live
+     offset   the phase-delay field  (bleuje.com/tutorial2)
+     shape    the 1-periodic function each element runs
+     motion   what that function actually does to an element
+     render   how an element is drawn
+     look     palette, blur, tempo
+
+   The genes are orthogonal on purpose: because every one of them closes
+   its own loop, any combination of them also loops. That is what makes
+   random draws from this space usable instead of noise.
+
+   A genome is compiled to readable JavaScript, once, and that source is
+   the single source of truth -- what you see is exactly what "copy code"
+   gives you.
+   ===================================================================== */
+
+/* ---------- deterministic RNG so a seed reproduces a genome ---------- */
+function rng(seed){
+  let a = (seed >>> 0) || 1;
+  const f = () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let x = Math.imul(a ^ (a >>> 15), 1 | a);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  f.int  = (lo, hi) => lo + Math.floor(f() * (hi - lo + 1));
+  f.flt  = (lo, hi) => lo + f() * (hi - lo);
+  f.pick = arr => arr[Math.floor(f() * arr.length)];
+  f.odds = p => f() < p;
+  return f;
+}
+
+const n2 = v => (Math.round(v * 1000) / 1000);
+
+/* =====================================================================
+   GENE TABLES
+   Each option supplies:  rand(r) -> params,  and emit(p) -> code.
+   ===================================================================== */
+
+/* ---------- layouts: fill `els` with {x, y, s, ...} ---------- */
+const LAYOUTS = {
+  grid: {
+    label: 'grid', ordered: false, note: 'square lattice',
+    rand: r => ({ n: r.int(6, 20), jit: r.odds(0.3) ? n2(r.flt(0.05, 0.3)) : 0 }),
+    emit: p => `
+  const s = W / ${p.n};
+  for(let i = 0; i < ${p.n}; i++)
+    for(let j = 0; j < ${p.n}; j++)
+      els.push({ x: (i + 0.5) * s + random(-1, 1) * ${p.jit} * s,
+                 y: (j + 0.5) * s + random(-1, 1) * ${p.jit} * s,
+                 s: s, i: i, j: j });`
+  },
+  brick: {
+    label: 'brick', ordered: false, note: 'offset rows',
+    rand: r => ({ n: r.int(6, 16) }),
+    emit: p => `
+  const s = W / ${p.n};
+  for(let j = 0; j < ${p.n}; j++)
+    for(let i = 0; i < ${p.n}; i++)
+      els.push({ x: (i + (j % 2 ? 0.5 : 0)) * s, y: (j + 0.5) * s, s: s, i: i, j: j });`
+  },
+  rings: {
+    label: 'rings', ordered: true, path: true, note: 'concentric rings',
+    rand: r => ({ rings: r.int(6, 22), per: r.int(10, 40), R: n2(r.flt(0.36, 0.47)) }),
+    emit: p => `
+  const R = W * ${p.R};
+  for(let ri = 1; ri <= ${p.rings}; ri++){
+    const rad = R * ri / ${p.rings};
+    const cnt = max(4, round(${p.per} * ri / ${p.rings}));
+    for(let k = 0; k < cnt; k++){
+      const th = TWO_PI * k / cnt + ri * 0.4;
+      els.push({ x: W/2 + rad * cos(th), y: H/2 + rad * sin(th),
+                 s: R / ${p.rings} * 0.9, ring: ri });
+    }
+  }`
+  },
+  disc: {
+    label: 'disc', ordered: true, note: 'phyllotaxis spiral',
+    rand: r => ({ n: r.int(240, 900), R: n2(r.flt(0.38, 0.47)) }),
+    emit: p => `
+  const R = W * ${p.R}, golden = PI * (3 - sqrt(5));
+  for(let k = 0; k < ${p.n}; k++){
+    const rad = R * sqrt((k + 0.5) / ${p.n}), th = golden * k;
+    els.push({ x: W/2 + rad * cos(th), y: H/2 + rad * sin(th),
+               s: R / sqrt(${p.n}) * 1.25 });
+  }`
+  },
+  sphere: {
+    label: 'sphere', ordered: true, note: 'Fibonacci sphere, front half',
+    rand: r => ({ n: r.int(700, 2600), R: n2(r.flt(0.32, 0.42)), tilt: n2(r.flt(-0.4, 0.4)) }),
+    emit: p => `
+  const R = W * ${p.R}, golden = PI * (3 - sqrt(5));
+  for(let k = 0; k < ${p.n}; k++){
+    const sy = 1 - (k / (${p.n} - 1)) * 2;
+    const rad = sqrt(max(0, 1 - sy * sy)), th = golden * k;
+    // tilt about x, then keep the near half so nothing needs depth sorting
+    const y0 = sy * cos(${p.tilt}) - sin(th) * rad * sin(${p.tilt});
+    const z0 = sy * sin(${p.tilt}) + sin(th) * rad * cos(${p.tilt});
+    if(z0 < -0.03) continue;
+    els.push({ x: W/2 + cos(th) * rad * R, y: H/2 + y0 * R,
+               s: R / sqrt(${p.n}) * 1.6, z: z0 });
+  }`
+  },
+  curve: {
+    label: 'curve', ordered: true, path: true, note: 'Hilbert space-filling curve',
+    rand: r => ({ order: r.int(4, 5), m: r.int(30, 60) }),
+    emit: p => `
+  const side = 1 << ${p.order}, cell = (W - 2 * ${p.m}) / (side - 1);
+  for(let d = 0; d < side * side; d++){
+    let rx, ry, tt = d, x = 0, y = 0;
+    for(let s = 1; s < side; s *= 2){
+      rx = 1 & (tt >> 1);
+      ry = 1 & (tt ^ rx);
+      if(ry === 0){
+        if(rx === 1){ x = s - 1 - x; y = s - 1 - y; }
+        const tmp = x; x = y; y = tmp;
+      }
+      x += s * rx; y += s * ry; tt = tt >> 2;
+    }
+    els.push({ x: ${p.m} + x * cell, y: ${p.m} + y * cell, s: cell });
+  }`
+  },
+  packing: {
+    label: 'packing', ordered: false, note: 'greedy circle packing',
+    rand: r => ({ tries: r.int(2000, 5000), lo: r.int(7, 14), hi: r.int(34, 70), gap: r.int(2, 8) }),
+    emit: p => `
+  for(let a = 0; a < ${p.tries}; a++){
+    const rad = random(${p.lo}, ${p.hi});
+    const x = random(rad + 4, W - rad - 4), y = random(rad + 4, H - rad - 4);
+    let ok = true;
+    for(let i = 0; i < els.length; i++)
+      if(dist(x, y, els[i].x, els[i].y) < rad + els[i].s / 2 + ${p.gap}){ ok = false; break; }
+    if(ok) els.push({ x: x, y: y, s: rad * 2 });
+  }`
+  },
+  walk: {
+    label: 'walk', ordered: true, path: true, note: 'random waypoint path',
+    rand: r => ({ steps: r.int(150, 320), lo: r.int(14, 30), hi: r.int(55, 100), m: r.int(50, 100) }),
+    emit: p => `
+  let wx = random(${p.m}, W - ${p.m}), wy = random(${p.m}, H - ${p.m});
+  els.push({ x: wx, y: wy, s: 0 });
+  for(let i = 0; i < ${p.steps}; i++){
+    const len = random(${p.lo}, ${p.hi}), dir = floor(random(8)) * QUARTER_PI;
+    let nx = wx + cos(dir) * len, ny = wy + sin(dir) * len;
+    if(nx > W - ${p.m} || nx < ${p.m}) nx = wx - cos(dir) * len;
+    if(ny > H - ${p.m} || ny < ${p.m}) ny = wy - sin(dir) * len;
+    wx = nx; wy = ny;
+    els.push({ x: wx, y: wy, s: i === ${p.steps} - 1 ? 0 : random(10, 26) });
+  }`
+  }
+};
+
+/* ---------- offset fields: an expression in `e` giving a phase delay ---------- */
+const OFFSETS = {
+  none:     { label: 'in sync',   rand: () => ({}),
+              emit: () => `0` },
+  radial:   { label: 'radial',    rand: r => ({ sp: n2(r.flt(0.6, 3.2)) }),
+              emit: p => `e.r * ${p.sp}` },
+  angular:  { label: 'angular',   rand: r => ({ sp: n2(r.flt(0.8, 3.5)) }),
+              emit: p => `e.a / TWO_PI * ${p.sp}` },
+  noise:    { label: 'noise',     rand: r => ({ sp: n2(r.flt(0.8, 3.0)), sc: n2(r.flt(0.004, 0.02)) }),
+              emit: p => `noise(e.x * ${p.sc}, e.y * ${p.sc}) * ${p.sp}` },
+  index:    { label: 'index',     rand: r => ({ sp: n2(r.flt(0.8, 4.0)) }),
+              emit: p => `e.u * ${p.sp}` },
+  diagonal: { label: 'diagonal',  rand: r => ({ sp: n2(r.flt(0.6, 3.0)) }),
+              emit: p => `(e.x + e.y) / (W + H) * ${p.sp}` },
+  spiral:   { label: 'spiral',    rand: r => ({ sp: n2(r.flt(0.8, 3.0)), tw: r.int(1, 3) }),
+              emit: p => `(e.r * ${p.sp} + ${p.tw} * e.a / TWO_PI)` }
+};
+
+/* ---------- shaping: a 1-periodic function of the local phase ---------- */
+const SHAPES = {
+  sine:     { label: 'sine',      rand: () => ({}),
+              emit: () => `0.5 + 0.5 * sin(TWO_PI * p)` },
+  pingpong: { label: 'ping-pong', rand: r => ({ g: n2(r.flt(1.4, 4.0)) }),
+              emit: p => `ease(pingpong(p), ${p.g})` },
+  dwell:    { label: 'dwell',     rand: r => ({ sat: n2(r.flt(0.35, 0.85)) }),
+              emit: p => `constrain(map(cos(TWO_PI * p), ${p.sat}, -${p.sat}, 0, 1), 0, 1)` },
+  ramp:     { label: 'ramp',      rand: r => ({ g: n2(r.flt(1.2, 4.2)) }),
+              emit: p => `ease(p, ${p.g})` }
+};
+
+/* ---------- motions: turn (element, phase) into a transform ---------- */
+/* each emits code that may set  px, py, rot, sc  (declared by the caller) */
+const MOTIONS = {
+  pulse: {
+    label: 'pulse', needsOrder: false,
+    rand: r => ({ lo: n2(r.flt(0, 0.35)) }),
+    emit: p => `  sc = ${p.lo} + ${n2(1 - p.lo)} * w;`
+  },
+  spin: {
+    label: 'spin', needsOrder: false, wantsOriented: true,
+    rand: r => ({ turn: r.pick(['HALF_PI', 'PI', 'TWO_PI']) }),
+    emit: p => `  rot = ${p.turn} * w;`
+  },
+  orbit: {
+    label: 'orbit', needsOrder: false,
+    rand: r => ({ amt: n2(r.flt(0.18, 0.75)) }),
+    emit: p => `  const amp = e.s * ${p.amt} * (0.35 + 0.65 * w);
+  px += amp * cos(TWO_PI * p);
+  py += amp * sin(TWO_PI * p);`
+  },
+  jump: {
+    label: 'jump', needsOrder: false,
+    rand: r => ({ amt: n2(r.flt(0.5, 1.9)) }),
+    emit: p => `  px += e.jx * ${p.amt} * w;
+  py += e.jy * ${p.amt} * w;`
+  },
+  wave: {
+    label: 'wave', needsOrder: false,
+    rand: r => ({ k: r.int(1, 5), amp: n2(r.flt(0.35, 1.5)),
+                  axis: r.pick(['y', 'radial']) }),
+    emit: p => p.axis === 'y'
+      ? `  py += e.s * ${p.amp} * (0.4 + 0.6 * w) * sin(TWO_PI * (${p.k} * e.u - t));`
+      : `  const q = e.s * ${p.amp} * (0.4 + 0.6 * w) * sin(TWO_PI * (${p.k} * e.r - t));
+  px += q * cos(e.a); py += q * sin(e.a);`
+  },
+  breathe: {
+    label: 'breathe', needsOrder: false,
+    rand: r => ({ amt: n2(r.flt(0.1, 0.5)) }),
+    emit: p => `  const q = ${p.amt} * (w - 0.5) * 2;
+  px += (e.x - W/2) * q; py += (e.y - H/2) * q;`
+  },
+  convoy: {
+    label: 'convoy', needsOrder: true, replacement: true,
+    rand: r => ({ K: r.int(80, 230), g: n2(r.flt(2.2, 4.6)) }),
+    emit: () => ``
+  }
+};
+
+/* ---------- renders ---------- */
+const RENDERS = {
+  dot: {
+    label: 'dot', oriented: false, collective: false,
+    rand: r => ({ w: n2(r.flt(0.12, 0.5)) }),
+    emit: p => `  stroke(INK); strokeWeight(max(0.5, e.s * ${p.w} * sc));
+  point(px, py);`
+  },
+  square: {
+    label: 'square', oriented: true, sym: 'HALF_PI', collective: false,
+    rand: r => ({ w: n2(r.flt(0.4, 0.92)), rnd: n2(r.flt(0, 0.4)), fill: r.odds(0.65) }),
+    emit: p => `  push(); translate(px, py); rotate(rot);
+  ${p.fill ? 'noStroke(); fill(INK);' : 'noFill(); stroke(INK); strokeWeight(WT);'}
+  rectMode(CENTER);
+  const sz = e.s * ${p.w} * sc;
+  rect(0, 0, sz, sz, sz * ${p.rnd});
+  pop();`
+  },
+  ring: {
+    label: 'ring', oriented: false, collective: false,
+    rand: r => ({ w: n2(r.flt(0.45, 1.0)) }),
+    emit: p => `  noFill(); stroke(INK); strokeWeight(WT);
+  circle(px, py, max(0.5, e.s * ${p.w} * sc));`
+  },
+  arcs: {
+    label: 'arcs', oriented: true, sym: 'PI', collective: false, needsGrid: true,
+    rand: () => ({}),
+    emit: () => `  push(); translate(px, py); rotate(rot);
+  noFill(); stroke(INK); strokeWeight(WT);
+  const s2 = e.s * sc;
+  arc(-s2/2, -s2/2, s2, s2, 0, HALF_PI);
+  arc( s2/2,  s2/2, s2, s2, PI, PI + HALF_PI);
+  pop();`
+  },
+  bar: {
+    label: 'bar', oriented: true, sym: 'PI', collective: false,
+    rand: r => ({ len: n2(r.flt(0.6, 1.5)) }),
+    emit: p => `  push(); translate(px, py); rotate(rot);
+  stroke(INK); strokeWeight(WT);
+  const L = e.s * ${p.len} * sc / 2;
+  line(-L, 0, L, 0);
+  pop();`
+  },
+  cross: {
+    label: 'cross', oriented: true, sym: 'HALF_PI', collective: false,
+    rand: r => ({ len: n2(r.flt(0.5, 1.2)) }),
+    emit: p => `  push(); translate(px, py); rotate(rot);
+  stroke(INK); strokeWeight(WT);
+  const L = e.s * ${p.len} * sc / 2;
+  line(-L, 0, L, 0); line(0, -L, 0, L);
+  pop();`
+  },
+  wavelet: {
+    label: 'wavelet', oriented: false, collective: false,
+    rand: r => ({ k: r.int(1, 4), amp: n2(r.flt(0.3, 0.6)) }),
+    emit: p => `  noFill(); stroke(INK); strokeWeight(WT);
+  const rr = e.s * 0.5 * sc, steps = max(10, floor(rr));
+  beginShape();
+  for(let q = 0; q <= steps; q++){
+    const uu = q / steps, xx = lerp(-rr, rr, uu);
+    const env = sqrt(max(0, 1 - (xx / rr) * (xx / rr)));
+    vertex(px + xx, py + sin(TWO_PI * (${p.k} * uu + p)) * rr * ${p.amp} * env);
+  }
+  endShape();`
+  },
+  polyline: {
+    label: 'polyline', oriented: false, collective: true, needsOrder: true,
+    rand: r => ({ close: r.odds(0.3) }),
+    emit: () => ``
+  }
+};
+
+/* ---------- palettes ---------- */
+const LOOKS = [
+  { id: 'ink',    bg: 9,   ink: 255, label: 'white on black' },
+  { id: 'paper',  bg: 238, ink: 22,  label: 'black on paper' },
+  { id: 'dim',    bg: 16,  ink: 205, label: 'soft white' },
+  { id: 'bright', bg: 4,   ink: 255, label: 'high contrast' }
+];
+
+/* =====================================================================
+   RANDOM GENOMES, MUTATION, CROSSOVER
+   ===================================================================== */
+const AXES = ['layout', 'offset', 'shape', 'motion', 'render', 'look'];
+
+function randomGene(axis, r, g){
+  switch(axis){
+    case 'layout': {
+      const kind = r.pick(Object.keys(LAYOUTS));
+      return { kind: kind, p: LAYOUTS[kind].rand(r) };
+    }
+    case 'offset': {
+      const kind = r.pick(Object.keys(OFFSETS));
+      return { kind: kind, p: OFFSETS[kind].rand(r) };
+    }
+    case 'shape': {
+      const kind = r.pick(Object.keys(SHAPES));
+      return { kind: kind, p: SHAPES[kind].rand(r) };
+    }
+    case 'motion': {
+      const kind = r.pick(Object.keys(MOTIONS));
+      return { kind: kind, p: MOTIONS[kind].rand(r) };
+    }
+    case 'render': {
+      const kind = r.pick(Object.keys(RENDERS));
+      return { kind: kind, p: RENDERS[kind].rand(r) };
+    }
+    case 'look':
+      return {
+        kind: r.pick(LOOKS).id,
+        p: {
+          wt: n2(r.flt(1, 3.2)),
+          frames: r.pick([80, 90, 100, 110, 120, 140]),
+          blur: r.int(2, 5),
+          dir: r.odds(0.25) ? -1 : 1
+        }
+      };
+  }
+}
+
+/* Repair keeps the space honest. Most gene pairs work, but a few are
+   structurally impossible and would either freeze the animation or cut
+   the loop open, so they get corrected rather than discarded. */
+
+// rough cost per element, used to keep any single genome affordable
+const RCOST = { dot: 1, square: 2.5, ring: 3, arcs: 4, bar: 2,
+                cross: 3, wavelet: 8, polyline: 0.6 };
+
+// motions whose result is a position change -- the only ones a polyline
+// or a convoy can actually show
+const POSITIONAL = ['orbit', 'jump', 'wave', 'breathe'];
+
+function reroll(g, axis, kinds, r){
+  const kind = r.pick(kinds);
+  const tbl = { layout: LAYOUTS, offset: OFFSETS, shape: SHAPES,
+                motion: MOTIONS, render: RENDERS }[axis];
+  g[axis] = { kind: kind, p: tbl[kind].rand(r) };
+}
+
+function capCounts(g){
+  const cost = RCOST[g.render.kind] || 2;
+  const maxN = Math.max(60, Math.floor(2600 / cost));
+  const L = g.layout;
+  if(L.kind === 'disc')   L.p.n = Math.min(L.p.n, maxN);
+  if(L.kind === 'sphere') L.p.n = Math.min(L.p.n, Math.floor(maxN * 1.7));
+  if(L.kind === 'grid' || L.kind === 'brick')
+    L.p.n = Math.max(5, Math.min(L.p.n, Math.floor(Math.sqrt(maxN))));
+  if(L.kind === 'curve')
+    L.p.order = Math.min(L.p.order, maxN >= 1024 ? 5 : (maxN >= 256 ? 4 : 3));
+  if(L.kind === 'rings')
+    L.p.per = Math.min(L.p.per, Math.max(8, Math.floor(maxN / L.p.rings * 2)));
+  if(L.kind === 'packing') L.p.tries = Math.min(L.p.tries, 3200);
+}
+
+const TABLES = { layout: LAYOUTS, offset: OFFSETS, shape: SHAPES,
+                 motion: MOTIONS, render: RENDERS };
+
+function repair(g, r){
+  // 0. every gene must belong to its own axis. Cheap to check, and it also
+  //    catches genomes restored from an older save.
+  Object.keys(TABLES).forEach(axis => {
+    if(!g[axis] || !TABLES[axis][g[axis].kind]) g[axis] = randomGene(axis, r, g);
+  });
+  if(!g.look || !LOOKS.some(l => l.id === g.look.kind)) g.look = randomGene('look', r, g);
+
+  // 1. a polyline needs an ordered layout to thread through, and a
+  //    Fibonacci sphere's ordering criss-crosses so badly it fills solid
+  if(g.render.kind === 'polyline' && g.layout.kind === 'sphere')
+    reroll(g, 'layout', ['curve','walk','rings','disc'], r);
+  if(RENDERS[g.render.kind].needsOrder && !LAYOUTS[g.layout.kind].ordered){
+    if(r.odds(0.5)) reroll(g, 'layout', ['rings','disc','sphere','curve','walk'], r);
+    else reroll(g, 'render', ['dot','ring','square'], r);
+  }
+
+  // 1b. a convoy needs more than an ordering: consecutive elements have to
+  //     be spatially adjacent, or the markers teleport and the whole thing
+  //     reads as static noise. Phyllotaxis and Fibonacci spheres are ordered
+  //     but not paths.
+  if(MOTIONS[g.motion.kind].needsOrder && !LAYOUTS[g.layout.kind].path){
+    if(r.odds(0.5)) reroll(g, 'layout', ['curve','walk','rings'], r);
+    else reroll(g, 'motion', POSITIONAL.concat(['pulse','spin']), r);
+  }
+
+  // 2. a polyline only shows motion that moves its vertices --
+  //    pulse and spin would leave it frozen
+  if(g.render.kind === 'polyline' && POSITIONAL.indexOf(g.motion.kind) < 0)
+    reroll(g, 'motion', POSITIONAL, r);
+
+  // 3. Truchet arcs assume a square cell
+  if(RENDERS[g.render.kind].needsGrid
+     && g.layout.kind !== 'grid' && g.layout.kind !== 'brick')
+    reroll(g, 'render', ['dot','ring','square','cross'], r);
+
+  // 4. a spin you cannot see is a wasted gene
+  if(g.motion.kind === 'spin' && !RENDERS[g.render.kind].oriented)
+    reroll(g, 'render', ['square','bar','cross'], r);
+
+  // 5. THE loop-breaking case. `ramp` runs 0 -> 1 and never comes back,
+  //    so it only closes the loop when it drives a rotation through a
+  //    symmetry of the shape. Anywhere else it leaves a hard cut.
+  if(g.shape.kind === 'ramp' && g.motion.kind !== 'spin')
+    reroll(g, 'shape', ['sine','pingpong','dwell'], r);
+
+  // ...and that rotation has to land on a symmetry the render actually has
+  if(g.motion.kind === 'spin' && g.shape.kind === 'ramp'){
+    const sym = RENDERS[g.render.kind].sym || 'TWO_PI';
+    g.motion.p.turn = r.odds(0.35) ? 'TWO_PI' : sym;
+  }
+
+  // 6. a convoy owns the whole picture, so a collective render makes no sense
+  if(g.motion.kind === 'convoy' && RENDERS[g.render.kind].collective)
+    reroll(g, 'render', ['dot','ring','square','bar'], r);
+
+  // 7. a bare walk is only legible as a convoy or a polyline
+  if(g.layout.kind === 'walk' && g.motion.kind !== 'convoy' && g.render.kind !== 'polyline')
+    g.motion = { kind: 'convoy', p: MOTIONS.convoy.rand(r) };
+
+  capCounts(g);
+  return g;
+}
+
+function randomGenome(seed){
+  const r = rng(seed);
+  const g = { seed: seed, parents: [], gen: 0 };
+  AXES.forEach(a => { g[a] = randomGene(a, r, g); });
+  return repair(g, r);
+}
+
+function mutate(parent, seed, rate){
+  const r = rng(seed);
+  const g = JSON.parse(JSON.stringify(parent));
+  g.seed = seed;
+  g.parents = [parent.id];
+  g.gen = (parent.gen || 0) + 1;
+  delete g.id;
+
+  let changed = 0;
+  AXES.forEach(axis => {
+    if(!r.odds(rate)) return;
+    changed++;
+    // a small mutation nudges the parameters; a large one swaps the gene
+    if(r.odds(0.55) && Object.keys(g[axis].p).length){
+      const tbl = { layout: LAYOUTS, offset: OFFSETS, shape: SHAPES,
+                    motion: MOTIONS, render: RENDERS }[axis];
+      const fresh = tbl ? tbl[g[axis].kind].rand(r) : randomGene(axis, r, g).p;
+      const keys = Object.keys(fresh);
+      const key = r.pick(keys);
+      if(key !== undefined) g[axis].p[key] = fresh[key];
+    } else {
+      g[axis] = randomGene(axis, r, g);
+    }
+  });
+  if(!changed){
+    const axis = AXES[r.int(0, AXES.length - 1)];   // one draw, used twice
+    g[axis] = randomGene(axis, r, g);
+  }
+  return repair(g, r);
+}
+
+function crossover(a, b, seed){
+  const r = rng(seed);
+  const g = { seed: seed, parents: [a.id, b.id], gen: Math.max(a.gen || 0, b.gen || 0) + 1 };
+  AXES.forEach(axis => {
+    g[axis] = JSON.parse(JSON.stringify(r.odds(0.5) ? a[axis] : b[axis]));
+  });
+  return repair(g, r);
+}
+
+/* =====================================================================
+   GENOME -> SOURCE
+   ===================================================================== */
+function describe(g){
+  const bits = [
+    LAYOUTS[g.layout.kind].label,
+    MOTIONS[g.motion.kind].label,
+    RENDERS[g.render.kind].label
+  ];
+  return bits.join(' · ');
+}
+
+function genomeToSource(g){
+  const lay = LAYOUTS[g.layout.kind];
+  const look = LOOKS.find(l => l.id === g.look.kind) || LOOKS[0];
+  const lp = g.look.p;
+  const offsetExpr = OFFSETS[g.offset.kind].emit(g.offset.p);
+  const shapeExpr  = SHAPES[g.shape.kind].emit(g.shape.p);
+  const isConvoy   = g.motion.kind === 'convoy';
+  const isPoly     = g.render.kind === 'polyline';
+
+  const head = `// ${describe(g)}
+// layout ${g.layout.kind} · offset ${g.offset.kind} · shape ${g.shape.kind}
+// motion ${g.motion.kind} · render ${g.render.kind} · seed ${g.seed}
+
+const W = 540, H = 540;
+const numFrames = ${lp.frames};
+const samplesPerFrame = ${lp.blur};
+
+const BG = ${look.bg}, INK = ${look.ink}, WT = ${lp.wt};
+
+let els;
+
+function setup(){
+  randomSeed(${g.seed});
+  noiseSeed(${(g.seed * 7919) % 100000});
+  els = [];
+${lay.emit(g.layout.p)}
+
+  // every layout is normalised the same way, so an offset field written
+  // against e.r / e.a / e.u works on all of them
+  const N = els.length;
+  for(let k = 0; k < N; k++){
+    const e = els[k];
+    e.k = k; e.u = k / N;
+    const dx = e.x - W/2, dy = e.y - H/2;
+    e.r = sqrt(dx*dx + dy*dy) / (W * 0.5);
+    e.a = (atan2(dy, dx) + TWO_PI) % TWO_PI;
+    e.jx = (noise(e.x * 0.01, e.y * 0.01, 9.1) - 0.5) * e.s * 2;
+    e.jy = (noise(e.x * 0.01, e.y * 0.01, 4.7) - 0.5) * e.s * 2;
+  }
+}
+
+// the phase-delay field: only its value modulo 1 matters, which is
+// exactly why any field at all still leaves the animation looping
+function offsetOf(e){
+  return ${offsetExpr};
+}
+`;
+
+  if(isConvoy){
+    const K = g.motion.p.K, ge = g.motion.p.g;
+    return head + `
+// Replacement technique: ${K} markers ride the path at evenly spaced
+// progress values. After one loop each has slid into its neighbour's
+// slot, so the picture repeats without anything returning home.
+const K = ${K};
+
+function draw_(){
+  background(BG);
+  const last = els.length - 1;
+
+  for(let i = 0; i < K; i++){
+    const p = (i + t * ${lp.dir}) / K;
+    const fi = mod1(p) * last * 0.9999;
+    const i1 = floor(fi);
+    const k = ease(fi - i1, ${ge});   // a strong ease makes them step, not glide
+    const a = els[i1], b = els[i1 + 1];
+
+    const e = { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k),
+                s: max(2, lerp(a.s, b.s, k)), u: p, r: 0, a: 0, jx: 0, jy: 0 };
+    const w = ${shapeExpr};
+    let px = e.x, py = e.y, sc = 1, rot = 0;
+
+${RENDERS[g.render.kind].emit(g.render.p)}
+  }
+}
+`;
+  }
+
+  if(isPoly){
+    return head + `
+// One polyline threaded through every element in layout order, with
+// each vertex displaced by its own phase.
+function draw_(){
+  background(BG);
+  noFill(); stroke(INK); strokeWeight(WT);
+
+  beginShape();
+  for(let n = 0; n < els.length; n++){
+    const e = els[n];
+    const p = mod1(t * ${lp.dir} + offsetOf(e));
+    const w = ${shapeExpr};
+    let px = e.x, py = e.y, sc = 1, rot = 0;
+${MOTIONS[g.motion.kind].emit(g.motion.p)}
+    vertex(px, py);
+  }
+  endShape(${g.render.p.close ? 'CLOSE' : ''});
+}
+`;
+  }
+
+  return head + `
+function draw_(){
+  background(BG);
+
+  for(let n = 0; n < els.length; n++){
+    const e = els[n];
+    // the local phase -- same 1-periodic animation everywhere,
+    // just started at a different moment
+    const p = mod1(t * ${lp.dir} + offsetOf(e));
+    const w = ${shapeExpr};
+    let px = e.x, py = e.y, sc = 1, rot = 0;
+
+${MOTIONS[g.motion.kind].emit(g.motion.p)}
+${RENDERS[g.render.kind].emit(g.render.p)}
+  }
+}
+`;
+}
+</script>
+<script>
+/* =====================================================================
+   Loop Breeder — population, selection, lineage
+   ===================================================================== */
+(function(){
+'use strict';
+const $ = id => document.getElementById(id);
+
+/* ---------------- world ---------------- */
+const world = {
+  nodes: {},        // id -> { id, genome, source, gen, parents, custom, keep, pruned }
+  order: [],        // ids in creation order
+  population: [],   // ids currently on screen
+  gen: 0,
+  nextId: 1,
+  seedCounter: 1
+};
+
+let popSize = 12, mutRate = 0.35;
+const TILE = 216;                       // render resolution for a population tile
+const LS = 'loopbreeder.v1';
+
+const compiled = new Map();             // id -> { api, built, err }
+const tiles = new Map();                // id -> { el, canvas, ctx, frame }
+
+const BUFMAX = 560;                     // must cover the largest render target
+const buf = document.createElement('canvas');
+buf.width = buf.height = BUFMAX;
+const bufCtx = buf.getContext('2d');
+
+const thumbCv = document.createElement('canvas');
+thumbCv.width = thumbCv.height = 96;
+const thumbCtx = thumbCv.getContext('2d');
+
+const mod1 = x => ((x % 1) + 1) % 1;
+const newSeed = () => (world.seedCounter++ * 2654435761 % 2147483647);
+
+/* ---------------- node bookkeeping ---------------- */
+function addNode(genome, opts){
+  const id = 'n' + (world.nextId++);
+  genome.id = id;
+  const node = Object.assign({
+    id: id, genome: genome, gen: genome.gen || 0,
+    parents: (genome.parents || []).filter(Boolean),
+    custom: false, source: null, keep: false, pruned: false
+  }, opts || {});
+  if(!node.source) node.source = genomeToSource(genome);
+  world.nodes[id] = node;
+  world.order.push(id);
+  return id;
+}
+
+function sourceOf(node){ return node.source; }
+
+function compile(id){
+  if(compiled.has(id)) return compiled.get(id);
+  const node = world.nodes[id];
+  let rec;
+  try {
+    const f = new Function('API', 'with(API){\n' + sourceOf(node) +
+      '\n;return{setup:typeof setup === "function" ? setup : null, draw_: draw_,' +
+      'cfg:{W:W, H:H, numFrames:numFrames, samplesPerFrame:samplesPerFrame}};}');
+    const api = createAPI();
+    const built = f(api);
+    api.__bind(bufCtx, built.cfg.W, built.cfg.H, TILE / built.cfg.W);
+    if(built.setup) built.setup();
+    rec = { api: api, built: built, err: null };
+  } catch(e){
+    rec = { api: null, built: null, err: (e && e.message) || String(e) };
+  }
+  compiled.set(id, rec);
+  return rec;
+}
+
+/* ---------------- shared frame renderer ----------------
+   Same additive-average motion blur as the playground: sub-frames are
+   drawn into one shared buffer and summed at 1/n opacity.           */
+function renderInto(rec, ctx, size, frame, maxBlur){
+  const cfg = rec.built.cfg;
+  const s = Math.max(1, Math.min(cfg.samplesPerFrame, maxBlur));
+  rec.api.__use(bufCtx, size / cfg.W);
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 1 / s;
+
+  for(let sa = 0; sa < s; sa++){
+    bufCtx.setTransform(1, 0, 0, 1, 0, 0);
+    bufCtx.clearRect(0, 0, size, size);
+    rec.api.t = mod1((frame + sa / s) / cfg.numFrames);
+    rec.api.frameCount = frame;
+    rec.api.__frameReset();
+    rec.built.draw_();
+    ctx.drawImage(buf, 0, 0, size, size, 0, 0, size, size);
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* ---------------- population grid ---------------- */
+function tileMarkup(node){
+  const el = document.createElement('div');
+  el.className = 'tile';
+  el.dataset.id = node.id;
+  el.innerHTML =
+    '<canvas width="' + TILE + '" height="' + TILE + '"></canvas>' +
+    '<div class="gen">g' + node.gen + '</div>' +
+    '<div class="acts">' +
+      '<button data-act="open" title="Open full size">⤢</button>' +
+      '<button data-act="kill" title="Discard this one">✕</button>' +
+    '</div>' +
+    '<div class="meta">' + escapeHtml(label(node)) + '</div>';
+  return el;
+}
+
+function label(node){
+  if(node.custom) return 'imported sketch';
+  return describe(node.genome);
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+}
+
+function renderPopulation(){
+  const pop = $('pop');
+  pop.innerHTML = '';
+  tiles.clear();
+  world.population.forEach(id => {
+    const node = world.nodes[id];
+    if(!node) return;
+    const el = tileMarkup(node);
+    if(node.keep) el.classList.add('keep');
+    pop.appendChild(el);
+    const canvas = el.querySelector('canvas');
+    tiles.set(id, { el: el, canvas: canvas, ctx: canvas.getContext('2d'), frame: 0 });
+  });
+  updateCounters();
+}
+
+function updateCounters(){
+  $('gen-n').textContent = world.gen;
+  $('keep-n').textContent = world.population.filter(id => world.nodes[id].keep).length;
+  $('tree-n').textContent = world.order.length;
+  $('btn-breed').disabled = !world.population.some(id => world.nodes[id].keep);
+}
+
+/* ---------------- the animation scheduler ----------------
+   Tiles are visited round-robin under a time budget, so a heavy genome
+   slows itself down rather than stalling the whole page.            */
+let cursor = 0;
+function loop(){
+  requestAnimationFrame(loop);
+  const ids = world.population.slice();
+  if(!ids.length) return;
+
+  const start = performance.now();
+  let visited = 0;
+
+  while(visited < ids.length && performance.now() - start < 12){
+    const id = ids[cursor % ids.length];
+    cursor++; visited++;
+    const tile = tiles.get(id);
+    if(!tile) continue;
+
+    if(!compiled.has(id)){
+      const rec = compile(id);          // setup() can be slow: one per frame
+      if(rec.err) showTileError(tile, rec.err);
+      break;
+    }
+    const rec = compiled.get(id);
+    if(rec.err) continue;
+
+    try {
+      renderInto(rec, tile.ctx, TILE, tile.frame, 3);
+      tile.frame = (tile.frame + 1) % rec.built.cfg.numFrames;
+    } catch(e){
+      rec.err = 'draw: ' + e.message;
+      showTileError(tile, rec.err);
+    }
+  }
+}
+requestAnimationFrame(loop);
+
+function showTileError(tile, msg){
+  if(tile.el.querySelector('.err')) return;
+  const d = document.createElement('div');
+  d.className = 'err';
+  d.textContent = msg;
+  tile.el.appendChild(d);
+}
+
+/* ---------------- generations ---------------- */
+function seedPopulation(){
+  world.population.forEach(id => { world.nodes[id].pruned = true; });
+  world.population = [];
+  world.gen = 0;
+  for(let i = 0; i < popSize; i++){
+    const g = randomGenome(newSeed());
+    g.gen = 0;
+    world.population.push(addNode(g));
+  }
+  renderPopulation();
+  renderTree();
+  persist();
+}
+
+function breed(fromId){
+  const keepers = fromId ? [fromId]
+    : world.population.filter(id => world.nodes[id].keep);
+  if(!keepers.length) return;
+
+  // everything not kept is pruned: it stays in the lineage, greyed out
+  world.population.forEach(id => {
+    if(keepers.indexOf(id) < 0) world.nodes[id].pruned = true;
+  });
+
+  const next = keepers.slice();
+  const r = rng(newSeed());
+
+  while(next.length < popSize){
+    const seed = newSeed();
+    let childGenome;
+    const a = world.nodes[r.pick(keepers)];
+
+    if(keepers.length >= 2 && r.odds(0.3)){
+      let b = world.nodes[r.pick(keepers)];
+      let guard = 0;
+      while(b.id === a.id && guard++ < 8) b = world.nodes[r.pick(keepers)];
+      childGenome = (a.custom || b.custom) ? null : crossover(a.genome, b.genome, seed);
+    }
+    if(!childGenome){
+      if(a.custom){
+        // an imported sketch has no genes to turn; it can only be a parent
+        // by way of the model, so fall back to a fresh draw from its lineage
+        childGenome = randomGenome(seed);
+        childGenome.parents = [a.id];
+        childGenome.gen = a.gen + 1;
+      } else {
+        // every fifth child is a bold mutant: without it the population
+        // converges on the parents within a couple of generations and
+        // there is nothing left to choose between
+        const bold = next.length % 5 === 4;
+        childGenome = mutate(a.genome, seed, bold ? Math.min(0.95, mutRate * 2.2) : mutRate);
+      }
+    }
+    next.push(addNode(childGenome));
+  }
+
+  world.gen++;
+  world.population = next;
+  world.population.forEach(id => { world.nodes[id].pruned = false; });
+  renderPopulation();
+  renderTree();
+  persist();
+}
+
+function spawnChild(genome){
+  const id = addNode(genome);
+  world.population.push(id);
+  renderPopulation();
+  renderTree();
+  persist();
+  return id;
+}
+
+/* ---------------- lineage tree ---------------- */
+function thumbFor(node){
+  if(node.thumb) return node.thumb;
+  const rec = compile(node.id);
+  if(rec.err){ node.thumb = ''; return ''; }
+  try {
+    renderInto(rec, thumbCtx, 96, Math.floor(rec.built.cfg.numFrames * 0.3), 2);
+    node.thumb = thumbCv.toDataURL('image/png');
+  } catch(e){ node.thumb = ''; }
+  rec.api.__use(bufCtx, TILE / rec.built.cfg.W);
+  return node.thumb;
+}
+
+function renderTree(){
+  const host = $('tree');
+  if(!world.order.length){
+    host.innerHTML = '<div id="tree-empty">Nothing bred yet.<br><br>' +
+      'Hit <b>New population</b>, pick the ones you like, then breed. ' +
+      'Every animation you make shows up here, so you can always go back ' +
+      'to a branch you abandoned.</div>';
+    return;
+  }
+
+  const kids = {}, roots = [];
+  world.order.forEach(id => {
+    const n = world.nodes[id];
+    const p = n.parents && n.parents[0];
+    if(p && world.nodes[p]) (kids[p] = kids[p] || []).push(id);
+    else roots.push(id);
+  });
+
+  // The rail is narrow and tall while a generation is wide and flat, so the
+  // tree is drawn transposed: generations run left to right, siblings stack.
+  const NW = 40, GX = 30, GY = 7;
+  const pos = {};
+  let slot = 0, maxDepth = 0;
+  const walk = (id, depth) => {
+    maxDepth = Math.max(maxDepth, depth);
+    const ch = kids[id] || [];
+    if(!ch.length){ pos[id] = { c: slot++, d: depth }; return pos[id].c; }
+    const xs = ch.map(c => walk(c, depth + 1));
+    pos[id] = { c: (xs[0] + xs[xs.length - 1]) / 2, d: depth };
+    return pos[id].c;
+  };
+  roots.forEach(r => walk(r, 0));
+
+  const W = (maxDepth + 1) * (NW + GX) + GX;
+  const H = Math.max(1, slot) * (NW + GY) + GY;
+  const X = id => GX / 2 + pos[id].d * (NW + GX);
+  const Y = id => GY + pos[id].c * (NW + GY);
+
+  let edges = '', boxes = '';
+  world.order.forEach(id => {
+    const n = world.nodes[id];
+    (n.parents || []).forEach((p, k) => {
+      if(!world.nodes[p] || !pos[p]) return;
+      const x1 = X(p) + NW, y1 = Y(p) + NW / 2, x2 = X(id), y2 = Y(id) + NW / 2;
+      const mx = (x1 + x2) / 2;
+      edges += '<path class="edge" d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 +
+        ' ' + mx + ' ' + y2 + ' ' + x2 + ' ' + y2 + '"' +
+        (k ? ' stroke-dasharray="2 3" opacity=".5"' : '') + '/>';
+    });
+
+    const live = world.population.indexOf(id) >= 0;
+    const cls = 'nodebox' + (n.keep && live ? ' keep' : '') +
+      (live ? ' live' : '') + (n.pruned && !live ? ' pruned' : '');
+    const th = thumbFor(n);
+    boxes += '<g class="' + cls + '" data-id="' + id + '">' +
+      '<rect x="' + X(id) + '" y="' + Y(id) + '" width="' + NW + '" height="' + NW + '" rx="4"/>' +
+      (th ? '<image href="' + th + '" x="' + (X(id) + 2) + '" y="' + (Y(id) + 2) +
+            '" width="' + (NW - 4) + '" height="' + (NW - 4) + '"/>' : '') +
+      '<title>' + escapeHtml(label(n)) + ' (gen ' + n.gen + ')</title>' +
+      '</g>';
+  });
+
+  host.innerHTML = '<svg width="' + W + '" height="' + H + '">' + edges + boxes + '</svg>';
+  host.querySelectorAll('.nodebox').forEach(g => {
+    g.addEventListener('click', () => openDetail(g.dataset.id));
+  });
+  const newest = world.order[world.order.length - 1];
+  if(pos[newest]){
+    host.scrollLeft = Math.max(0, X(newest) - host.clientWidth + NW * 2);
+    host.scrollTop = Math.max(0, Y(newest) - host.clientHeight / 2);
+  }
+}
+
+/* ---------------- detail overlay ---------------- */
+let detailId = null, detailFrame = 0, detailRAF = null, detailLast = 0;
+
+function openDetail(id){
+  const node = world.nodes[id];
+  if(!node) return;
+  detailId = id; detailFrame = 0; detailLast = 0;
+  $('detail').classList.add('open');
+  $('d-title').textContent = label(node);
+  $('d-sub').textContent = id + ' · gen ' + node.gen +
+    (node.parents.length ? ' · from ' + node.parents.join(' + ') : ' · founder');
+  $('d-keep').textContent = node.keep ? '★ Kept' : '☆ Keep';
+  buildDetailBody(node);
+  if(!detailRAF) detailRAF = requestAnimationFrame(detailLoop);
+}
+
+function closeDetail(){
+  $('detail').classList.remove('open');
+  detailId = null;
+  if(detailRAF){ cancelAnimationFrame(detailRAF); detailRAF = null; }
+  const rec = detailId && compiled.get(detailId);
+  if(rec && rec.api) rec.api.__use(bufCtx, TILE / rec.built.cfg.W);
+}
+
+function detailLoop(ts){
+  detailRAF = requestAnimationFrame(detailLoop);
+  if(!detailId) return;
+  const rec = compiled.get(detailId) || compile(detailId);
+  if(rec.err) return;
+  const dt = detailLast ? (ts - detailLast) / 1000 : 0;
+  detailLast = ts;
+  if(dt < 1 / 30) return;
+
+  const cv = $('detail-canvas');
+  try {
+    renderInto(rec, cv.getContext('2d'), cv.width, detailFrame, 6);
+    detailFrame = (detailFrame + 1) % rec.built.cfg.numFrames;
+  } catch(e){ rec.err = e.message; }
+  rec.api.__use(bufCtx, TILE / rec.built.cfg.W);
+}
+
+const AXIS_LABEL = { layout:'layout', offset:'offset', shape:'shape',
+                     motion:'motion', render:'render', look:'look' };
+
+function geneSummary(g, axis){
+  const gene = g[axis];
+  if(!gene) return '—';
+  const tbl = { layout: LAYOUTS, offset: OFFSETS, shape: SHAPES,
+                motion: MOTIONS, render: RENDERS }[axis];
+  const name = tbl ? (tbl[gene.kind] || {}).label || gene.kind : gene.kind;
+  const ps = Object.keys(gene.p || {}).map(k => k + ' ' + gene.p[k]).join('  ');
+  return name + (ps ? '  <em>' + escapeHtml(ps) + '</em>' : '');
+}
+
+function buildDetailBody(node){
+  const body = $('detail-body');
+  body.innerHTML = '';
+
+  if(!node.custom){
+    const sec = document.createElement('div');
+    sec.className = 'section';
+    sec.innerHTML = '<h3>Genes</h3><div class="note">Reroll one gene to explore in a ' +
+      'single direction. Each reroll adds a child to the population and to the lineage.</div>' +
+      '<div class="genes"></div>';
+    const list = sec.querySelector('.genes');
+    ['layout','offset','shape','motion','render','look'].forEach(axis => {
+      const row = document.createElement('div');
+      row.className = 'gene';
+      row.innerHTML = '<span class="axis">' + AXIS_LABEL[axis] + '</span>' +
+        '<span class="val">' + geneSummary(node.genome, axis) + '</span>';
+      const b = document.createElement('button');
+      b.textContent = 'reroll';
+      b.addEventListener('click', () => rerollGene(node, axis));
+      row.appendChild(b);
+      list.appendChild(row);
+    });
+    body.appendChild(sec);
+  }
+
+  const code = document.createElement('div');
+  code.className = 'section';
+  code.innerHTML = '<h3>Sketch</h3>' +
+    '<div class="note">This is the animation, not a description of it — paste it ' +
+    'straight into LoopLab.</div>' +
+    '<pre id="detail-code"></pre>' +
+    '<div class="row" style="margin-top:8px">' +
+      '<button id="d-copy">Copy code</button>' +
+      '<button id="d-dl">Download .js</button>' +
+    '</div>';
+  body.appendChild(code);
+  $('detail-code').textContent = sourceOf(node);
+  $('d-copy').addEventListener('click', e => copyText(sourceOf(node), e.target));
+  $('d-dl').addEventListener('click', () => {
+    const blob = new Blob([sourceOf(node)], { type: 'text/javascript' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = node.id + '-' + label(node).replace(/\W+/g, '-') + '.js';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  });
+
+  const ai = document.createElement('div');
+  ai.className = 'section';
+  ai.innerHTML = '<h3>Mutate with a model</h3>' +
+    '<div class="note">The genes above can only recombine what the vocabulary ' +
+    'already has. When you want something the vocabulary cannot say, hand this ' +
+    'sketch to a model and paste the result back — it enters the lineage as a ' +
+    'child of this node and can be bred from like anything else.</div>' +
+    '<div class="row" style="margin:8px 0">' +
+      '<input id="ai-note" placeholder="what should change? (optional)" ' +
+        'style="flex:1;min-width:180px;background:#0f1116;border:1px solid var(--line);' +
+        'border-radius:5px;padding:6px 8px">' +
+      '<button id="ai-copy">Copy prompt</button>' +
+    '</div>' +
+    '<textarea class="paste" id="ai-paste" placeholder="paste the sketch the model wrote here"></textarea>' +
+    '<div class="row" style="margin-top:8px"><button id="ai-add">Add as child</button>' +
+    '<span class="chip" id="ai-status"></span></div>';
+  body.appendChild(ai);
+
+  $('ai-copy').addEventListener('click', e =>
+    copyText(aiPrompt(node, $('ai-note').value.trim()), e.target));
+  $('ai-add').addEventListener('click', () => importChild(node));
+}
+
+function rerollGene(node, axis){
+  const r = rng(newSeed());
+  const g = JSON.parse(JSON.stringify(node.genome));
+  g.seed = newSeed();
+  g.parents = [node.id];
+  g.gen = node.gen + 1;
+  delete g.id;
+  g[axis] = randomGene(axis, r, g);
+  repair(g, r);
+  const id = spawnChild(g);
+  openDetail(id);
+}
+
+function aiPrompt(node, note){
+  return [
+'Here is a seamless animation loop I like. Write me a variation on it.',
+'',
+'It runs in a tiny Processing-flavoured JavaScript sandbox. The rules are strict:',
+'',
+'- There is one global clock, `t`, running 0 to 1 over exactly one loop.',
+'- `draw_()` is called several times per displayed frame (motion blur) and out of',
+'  order when scrubbing, so it must draw purely as a function of `t`. Never',
+'  accumulate state between calls.',
+'- The frame at t=1 must be pixel-identical to the frame at t=0.',
+'- Declare `const W, H, numFrames, samplesPerFrame`, plus `setup()` and `draw_()`.',
+'',
+'Available: background fill stroke noFill noStroke strokeWeight strokeCap blendMode',
+'push pop translate rotate scale rect square circle ellipse arc line point triangle',
+'quad bezier beginShape vertex endShape text textSize textAlign colorMode',
+'map lerp norm constrain dist sq radians degrees abs min max floor ceil round pow',
+'sqrt exp log sin cos tan atan2 random randomSeed randomGaussian noise snoise',
+'noiseSeed noiseDetail loopNoise loopSnoise ease(p,g) mod1(x) pingpong(p)',
+'Constants: PI TWO_PI HALF_PI QUARTER_PI CENTER CORNER CLOSE ADD BUTT',
+'',
+'Ways these loops usually close, for reference:',
+'- give every element the same 1-periodic animation and a different phase offset;',
+'  only the offset mod 1 matters, so any offset field works',
+'- the replacement technique: K copies at p = (i + t) / K along an ordered path',
+'- rotate a shape by a turn that is an actual symmetry of that shape',
+'- integer wave counts: sin(TWO_PI * (n * u - t)) with n a whole number',
+'- self-similar zoom: scale(pow(2, t)) over a fractal, one loop per doubling',
+'',
+'The sketch:',
+'',
+sourceOf(node),
+'',
+note ? 'What I want changed: ' + note
+     : 'Keep what makes it hypnotic, but add structure the parameters above cannot' +
+       ' reach — a new relationship between the elements, not just different numbers.',
+'',
+'Reply with the complete sketch and nothing else.'
+  ].join('\n');
+}
+
+function importChild(parent){
+  const src = $('ai-paste').value.trim();
+  const status = $('ai-status');
+  if(!src){ status.textContent = 'nothing pasted'; return; }
+
+  const clean = src.replace(/^```(?:js|javascript)?\s*/i, '').replace(/```\s*$/, '');
+  try {
+    const f = new Function('API', 'with(API){\n' + clean +
+      '\n;return{setup:typeof setup === "function" ? setup : null, draw_: draw_,' +
+      'cfg:{W:W, H:H, numFrames:numFrames, samplesPerFrame:samplesPerFrame}};}');
+    const api = createAPI();
+    const built = f(api);
+    if(typeof built.draw_ !== 'function') throw new Error('no draw_() function');
+    const cv = document.createElement('canvas');
+    cv.width = built.cfg.W; cv.height = built.cfg.H;
+    api.__bind(cv.getContext('2d'), built.cfg.W, built.cfg.H);
+    if(built.setup) built.setup();
+    api.t = 0.3; api.__frameReset(); built.draw_();      // prove it runs
+  } catch(e){
+    status.textContent = 'rejected: ' + e.message;
+    return;
+  }
+
+  const id = 'n' + (world.nextId++);
+  world.nodes[id] = {
+    id: id, genome: null, source: clean, gen: parent.gen + 1,
+    parents: [parent.id], custom: true, keep: false, pruned: false
+  };
+  world.order.push(id);
+  world.population.push(id);
+  status.textContent = 'added as ' + id;
+  $('ai-paste').value = '';
+  renderPopulation();
+  renderTree();
+  persist();
+  openDetail(id);
+}
+
+function copyText(text, btn){
+  const done = ok => {
+    const old = btn.textContent;
+    btn.textContent = ok ? 'copied' : 'copy failed';
+    setTimeout(() => { btn.textContent = old; }, 1200);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(() => done(true), () => done(false));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch(e){}
+    ta.remove(); done(ok);
+  }
+}
+
+/* ---------------- persistence ---------------- */
+function persist(){
+  try {
+    const slim = {};
+    world.order.forEach(id => {
+      const n = world.nodes[id];
+      slim[id] = { id: n.id, genome: n.genome, gen: n.gen, parents: n.parents,
+                   custom: n.custom, keep: n.keep, pruned: n.pruned,
+                   source: n.custom ? n.source : null };
+    });
+    localStorage.setItem(LS, JSON.stringify({
+      nodes: slim, order: world.order, population: world.population,
+      gen: world.gen, nextId: world.nextId, seedCounter: world.seedCounter
+    }));
+  } catch(e){ /* quota or private mode; the tree just won't survive a reload */ }
+}
+
+function restore(data){
+  world.nodes = {}; world.order = []; compiled.clear();
+  Object.keys(data.nodes).forEach(id => {
+    const n = data.nodes[id];
+    n.source = n.custom ? n.source : genomeToSource(n.genome);
+    n.thumb = null;
+    world.nodes[id] = n;
+  });
+  world.order = data.order.filter(id => world.nodes[id]);
+  world.population = data.population.filter(id => world.nodes[id]);
+  world.gen = data.gen || 0;
+  world.nextId = data.nextId || (world.order.length + 1);
+  world.seedCounter = data.seedCounter || 1;
+  renderPopulation();
+  renderTree();
+}
+
+/* ---------------- wiring ---------------- */
+$('pop').addEventListener('click', e => {
+  const tile = e.target.closest('.tile');
+  if(!tile) return;
+  const id = tile.dataset.id;
+  const act = e.target.dataset && e.target.dataset.act;
+
+  if(act === 'open'){ openDetail(id); return; }
+  if(act === 'kill'){
+    world.nodes[id].pruned = true;
+    world.population = world.population.filter(x => x !== id);
+    renderPopulation(); renderTree(); persist();
+    return;
+  }
+  const node = world.nodes[id];
+  node.keep = !node.keep;
+  tile.classList.toggle('keep', node.keep);
+  updateCounters();
+  renderTree();
+  persist();
+});
+
+$('btn-seed').addEventListener('click', seedPopulation);
+$('btn-breed').addEventListener('click', () => breed(null));
+$('d-breed').addEventListener('click', () => {
+  if(!detailId) return;
+  const id = detailId;
+  closeDetail();
+  world.nodes[id].keep = true;
+  breed(id);
+});
+$('d-keep').addEventListener('click', () => {
+  if(!detailId) return;
+  const n = world.nodes[detailId];
+  n.keep = !n.keep;
+  $('d-keep').textContent = n.keep ? '★ Kept' : '☆ Keep';
+  const tile = tiles.get(detailId);
+  if(tile) tile.el.classList.toggle('keep', n.keep);
+  updateCounters(); renderTree(); persist();
+});
+$('d-close').addEventListener('click', closeDetail);
+$('detail').addEventListener('click', e => { if(e.target.id === 'detail') closeDetail(); });
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape'){ closeDetail(); $('help').classList.remove('open'); }
+});
+
+$('rate').addEventListener('input', e => {
+  mutRate = +e.target.value / 100;
+  $('rate-v').textContent = e.target.value + '%';
+});
+$('popsize').addEventListener('input', e => {
+  popSize = +e.target.value;
+  $('popsize-v').textContent = popSize;
+});
+$('btn-tree').addEventListener('click', () => {
+  const hidden = $('tree-wrap').classList.toggle('hidden');
+  $('btn-tree').textContent = hidden ? 'Show lineage' : 'Hide lineage';
+});
+$('btn-reset').addEventListener('click', () => {
+  if(!confirm('Clear the whole lineage? This cannot be undone.')) return;
+  world.nodes = {}; world.order = []; world.population = [];
+  world.gen = 0; world.nextId = 1; world.seedCounter = 1;
+  compiled.clear();
+  renderPopulation(); renderTree(); persist();
+});
+$('btn-save').addEventListener('click', () => {
+  persist();
+  const blob = new Blob([localStorage.getItem(LS) || '{}'], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'loop-lineage-gen' + world.gen + '.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
+$('btn-load').addEventListener('click', () => {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'application/json';
+  inp.addEventListener('change', () => {
+    const file = inp.files[0];
+    if(!file) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      try { restore(JSON.parse(fr.result)); persist(); }
+      catch(e){ alert('Could not read that file: ' + e.message); }
+    };
+    fr.readAsText(file);
+  });
+  inp.click();
+});
+
+/* ---------------- help ---------------- */
+$('help-card').innerHTML = [
+'<h2>Loop Breeder</h2>',
+'<p>Interactive evolution for seamless animation loops. You are the fitness ' ,
+'function: keep what you like, discard the rest, and let the survivors have children.</p>',
+
+'<h3>The loop you are in</h3>',
+'<div class="grid">',
+'<div>New population</div><div>twelve fresh draws from the genome space</div>',
+'<div>click a tile</div><div>keep it — a gold border means it survives</div>',
+'<div>✕</div><div>discard it now instead of waiting for the next generation</div>',
+'<div>Breed</div><div>kept tiles carry over unchanged; the empty slots fill with their children</div>',
+'<div>⤢</div><div>open it full size: genes, source, and per-gene rerolls</div>',
+'<div>Lineage</div><div>every animation ever made, pruned ones greyed out — click to go back</div>',
+'</div>',
+
+'<h3>What the genes are</h3>',
+'<p>Each animation is six independent genes. They are orthogonal on purpose: ' ,
+'every one of them closes its own loop, so any combination of them also loops. ' ,
+'That is why random draws are usable instead of noise.</p>',
+'<div class="grid">',
+'<div>layout</div><div>where the elements live — grid, rings, disc, sphere, Hilbert curve, packing, walk</div>',
+'<div>offset</div><div>the phase-delay field: radial, angular, noise, index, diagonal, spiral</div>',
+'<div>shape</div><div>the 1-periodic function each element runs — sine, ping-pong, dwell, ramp</div>',
+'<div>motion</div><div>what that function does — pulse, spin, orbit, jump, wave, breathe, convoy</div>',
+'<div>render</div><div>how one element is drawn — dot, square, ring, arcs, bar, cross, wavelet, polyline</div>',
+'<div>look</div><div>palette, stroke weight, motion blur, loop length</div>',
+'</div>',
+
+'<h3>Deterministic, until it needs not to be</h3>',
+'<p>Everything above is ordinary code — mutation is a seeded perturbation of a ' ,
+'parameter vector, crossover picks each gene from one parent or the other. It ' ,
+'runs instantly, offline, and the same seed always gives the same animation. ' ,
+'No model is involved and none is needed.</p>',
+'<p>What that <em>cannot</em> do is invent a gene. Parametric evolution only ' ,
+'recombines the vocabulary it was given, so a lineage eventually saturates: ' ,
+'you start seeing the same seven motions rearranged. That is the point where a ' ,
+'model earns its place. Open any animation, hit <b>Copy prompt</b>, and you get ' ,
+'the real source plus the loop-closure rules; paste back whatever comes out and ' ,
+'it joins the lineage as a child you can keep breeding from.</p>',
+'<p class="note">Two tiers, then: deterministic search inside the vocabulary, ' ,
+'a model for widening the vocabulary itself. The second is much slower and ' ,
+'much rarer, which is exactly the right ratio.</p>',
+
+'<h3>Credits</h3>',
+'<p>The technique vocabulary is drawn from the animations and public ' ,
+'<a href="https://bleuje.com/tutorials/" target="_blank" rel="noopener">tutorials</a> of ' ,
+'Etienne Jacob, and the motion blur is Dave / beesandbombs\' template. ' ,
+'Etienne Jacob\'s own Processing sources are copyright, all rights reserved, ' ,
+'and none of that code is reproduced here — this was written from scratch.</p>'
+].join('');
+$('btn-help').addEventListener('click', () => $('help').classList.add('open'));
+$('help').addEventListener('click', e => { if(e.target.id === 'help') $('help').classList.remove('open'); });
+
+/* ---------------- boot ---------------- */
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem(LS) || 'null'); } catch(e){}
+if(saved && saved.order && saved.order.length){
+  try { restore(saved); } catch(e){ seedPopulation(); }
+} else {
+  seedPopulation();
+}
+})();
+</script>
+</body>
+</html>

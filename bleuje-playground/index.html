@@ -342,6 +342,9 @@ function hsb2rgb(h,s,v){
 function createAPI(){
   let ctx = null;                     // current drawing target
   let W = 540, H = 540;
+  // sketches always draw in their own W x H space; baseScale lets a
+  // caller render that into a smaller canvas without touching the sketch
+  let baseScale = 1;
 
   // drawing state that Canvas2D doesn't track for us
   let doFill = true, doStroke = true;
@@ -480,7 +483,8 @@ function createAPI(){
     background(...a){
       ctx.save(); ctx.setTransform(1,0,0,1,0,0);
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = css(a); ctx.fillRect(0,0,W,H);
+      ctx.fillStyle = css(a);
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
       ctx.restore();
     },
     fill(...a){ doFill = true; ctx.fillStyle = css(a); },
@@ -608,8 +612,8 @@ function createAPI(){
     textWidth(str){ return ctx.measureText(String(str)).width; },
 
     /* --- internals used by the runner (not documented to sketches) --- */
-    __bind(c, w, h){
-      ctx = c; W = w; H = h;
+    __bind(c, w, h, scale){
+      ctx = c; W = w; H = h; baseScale = scale || 1;
       API.width = w; API.height = h;
       doFill = true; doStroke = true;
       rectM = 'corner'; ellipseM = 'center';
@@ -623,8 +627,10 @@ function createAPI(){
       ctx.font = '12px monospace';
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     },
+    // point the API at a different canvas without resetting style state
+    __use(c, scale){ ctx = c; baseScale = scale || 1; },
     __frameReset(){
-      ctx.setTransform(1,0,0,1,0,0);
+      ctx.setTransform(baseScale, 0, 0, baseScale, 0, 0);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
       doFill = true; doStroke = true;
