@@ -1,0 +1,1592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loop Lab — a seamless-animation playground</title>
+<style>
+:root{
+  --bg:#0d0e12;
+  --panel:#14161c;
+  --panel-2:#1a1d25;
+  --line:#272b36;
+  --text:#d7dae3;
+  --dim:#7c8496;
+  --accent:#7fd1c1;
+  --accent-2:#e0b978;
+  --err:#ff7a7a;
+  --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--text);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  overflow:hidden;
+}
+button,select,input{font-family:inherit;font-size:12px;color:var(--text)}
+button{
+  background:var(--panel-2);border:1px solid var(--line);border-radius:5px;
+  padding:5px 10px;cursor:pointer;transition:background .12s,border-color .12s;
+}
+button:hover{background:#232733;border-color:#3a4051}
+button:active{transform:translateY(1px)}
+button.primary{background:#1f3d38;border-color:#2f6157;color:var(--accent)}
+button.primary:hover{background:#265049}
+button.rec{background:#3d1f22;border-color:#6b2f35;color:#ff9b9b}
+select{background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:5px 8px;cursor:pointer}
+select:focus,button:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
+
+/* ---------- layout ---------- */
+#app{display:flex;flex-direction:column;height:100%}
+header{
+  display:flex;align-items:center;gap:12px;padding:8px 14px;
+  background:var(--panel);border-bottom:1px solid var(--line);flex:none;
+}
+header h1{font-size:14px;font-weight:600;letter-spacing:.02em}
+header h1 span{color:var(--accent)}
+header .sub{color:var(--dim);font-size:11px}
+header .spacer{flex:1}
+#main{display:flex;flex:1;min-height:0}
+#left{display:flex;flex-direction:column;min-width:260px;width:50%}
+#right{display:flex;flex-direction:column;flex:1;min-width:280px;background:var(--bg)}
+#split{
+  width:6px;cursor:col-resize;background:var(--line);flex:none;
+  transition:background .12s;
+}
+#split:hover,#split.drag{background:var(--accent)}
+
+/* ---------- toolbars ---------- */
+.bar{
+  display:flex;align-items:center;gap:8px;padding:7px 10px;flex:none;
+  background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap;
+}
+.bar.bottom{border-bottom:none;border-top:1px solid var(--line)}
+.bar label{color:var(--dim);font-size:11px;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.bar input[type=range]{width:80px;accent-color:var(--accent)}
+.bar input[type=checkbox]{accent-color:var(--accent);cursor:pointer}
+.chip{
+  font-family:var(--mono);font-size:11px;color:var(--dim);
+  background:var(--panel-2);border:1px solid var(--line);border-radius:4px;padding:3px 7px;
+}
+
+/* ---------- editor ---------- */
+#editor-wrap{position:relative;flex:1;min-height:0;background:#0f1116;overflow:hidden;display:flex}
+#gutter{
+  flex:none;width:46px;overflow:hidden;background:#0f1116;
+  border-right:1px solid var(--line);color:#4b5264;
+  font:12px/18px var(--mono);text-align:right;padding:12px 8px 12px 0;
+  user-select:none;white-space:pre;
+}
+#code-area{position:relative;flex:1;min-width:0;overflow:hidden}
+#hl,#code{
+  position:absolute;inset:0;margin:0;border:0;
+  font:12px/18px var(--mono);
+  padding:12px;
+  white-space:pre;overflow:auto;
+  tab-size:2;
+}
+#hl{pointer-events:none;color:var(--text);z-index:1}
+#code{
+  background:transparent;color:transparent;caret-color:var(--accent);
+  resize:none;z-index:2;outline:none;
+}
+#code::selection{background:rgba(127,209,193,.28)}
+#hl .c{color:#5d6675;font-style:italic}
+#hl .s{color:#c3a06e}
+#hl .k{color:#c98fd4}
+#hl .n{color:#7fb2e6}
+#hl .f{color:var(--accent)}
+#hl .p{color:#e0b978}
+#err{
+  position:absolute;left:0;right:0;bottom:0;z-index:3;
+  background:rgba(70,20,24,.96);border-top:1px solid #7a2a30;
+  color:var(--err);font:11px/1.5 var(--mono);padding:8px 12px;
+  max-height:35%;overflow:auto;white-space:pre-wrap;display:none;
+}
+
+/* ---------- preview ---------- */
+#stage{
+  flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+  padding:16px;overflow:hidden;
+  background:
+    linear-gradient(45deg,#111319 25%,transparent 25%,transparent 75%,#111319 75%),
+    linear-gradient(45deg,#111319 25%,#0d0e12 25%,#0d0e12 75%,#111319 75%);
+  background-size:16px 16px;background-position:0 0,8px 8px;
+}
+#view{
+  max-width:100%;max-height:100%;
+  box-shadow:0 6px 40px rgba(0,0,0,.6);
+  border-radius:2px;display:block;
+}
+#scrub{flex:1;min-width:100px;accent-color:var(--accent)}
+#tread{font-family:var(--mono);font-size:11px;color:var(--accent);min-width:132px}
+
+/* ---------- docs drawer ---------- */
+#docs{
+  display:none;flex:none;max-height:42%;overflow:auto;
+  background:var(--panel);border-top:1px solid var(--line);padding:14px 16px;
+  font-size:12px;line-height:1.65;
+}
+#docs.open{display:block}
+#docs h3{font-size:12px;color:var(--accent);margin:14px 0 6px;letter-spacing:.04em;text-transform:uppercase}
+#docs h3:first-child{margin-top:0}
+#docs code{font-family:var(--mono);background:var(--panel-2);border:1px solid var(--line);
+  border-radius:3px;padding:1px 5px;color:var(--accent-2);font-size:11px}
+#docs p{margin:6px 0;color:#aeb5c4}
+#docs .grid{display:grid;grid-template-columns:minmax(190px,auto) 1fr;gap:5px 14px;align-items:baseline}
+#docs .grid div:nth-child(odd){font-family:var(--mono);font-size:11px;color:var(--accent-2)}
+#docs .grid div:nth-child(even){color:#98a0b0;font-size:11.5px}
+#docs a{color:var(--accent)}
+.note{border-left:2px solid var(--accent-2);padding:6px 0 6px 12px;margin:10px 0;color:#98a0b0}
+
+@media (max-width:820px){
+  #main{flex-direction:column}
+  #left{width:auto;height:45%;min-height:0}
+  #split{width:auto;height:6px;cursor:row-resize}
+  #right{min-height:0}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Loop<span>Lab</span></h1>
+    <span class="sub">seamless animation loops · in the style of Etienne Jacob</span>
+    <span class="spacer"></span>
+    <button id="btn-docs">API &amp; credits</button>
+  </header>
+
+  <div id="main">
+    <div id="left">
+      <div class="bar">
+        <select id="preset" title="Load an example sketch"></select>
+        <button id="btn-run" class="primary" title="Ctrl/Cmd + Enter">Run ▸</button>
+        <label title="Re-run automatically ~700ms after you stop typing">
+          <input type="checkbox" id="auto" checked> auto-run
+        </label>
+        <span class="spacer" style="flex:1"></span>
+        <button id="btn-reset" title="Restore this preset's original code">Reset</button>
+        <button id="btn-save" title="Download this sketch as a .js file">Save .js</button>
+      </div>
+      <div id="editor-wrap">
+        <div id="gutter"></div>
+        <div id="code-area">
+          <pre id="hl" aria-hidden="true"><code></code></pre>
+          <textarea id="code" spellcheck="false" autocomplete="off"
+            autocorrect="off" autocapitalize="off" wrap="off"></textarea>
+        </div>
+        <div id="err"></div>
+      </div>
+    </div>
+
+    <div id="split"></div>
+
+    <div id="right">
+      <div class="bar">
+        <button id="btn-play" class="primary" style="min-width:70px">❚❚ Pause</button>
+        <label title="Sub-frames averaged per frame — the beesandbombs motion blur trick">
+          blur <input type="range" id="samples" min="1" max="12" step="1" value="4">
+          <span class="chip" id="samples-v">4</span>
+        </label>
+        <label title="Playback frames per second">
+          fps <input type="range" id="fps" min="5" max="60" step="1" value="30">
+          <span class="chip" id="fps-v">30</span>
+        </label>
+        <span class="spacer" style="flex:1"></span>
+        <button id="btn-png" title="Download the current frame as a PNG">PNG</button>
+        <button id="btn-rec" title="Record exactly one loop as a .webm video">● Record loop</button>
+      </div>
+      <div id="stage"><canvas id="view"></canvas></div>
+      <div class="bar bottom">
+        <span id="tread">t 0.000 · f 000/120</span>
+        <input type="range" id="scrub" min="0" max="119" step="1" value="0"
+          title="Scrub through the loop">
+        <span class="chip" id="perf">—</span>
+      </div>
+      <div id="docs"></div>
+    </div>
+  </div>
+</div>
+<script>
+/* =====================================================================
+   LoopLab — engine
+   A small Processing-flavoured drawing layer on top of Canvas2D, plus
+   the two things that make a "bleuje" loop work:
+     1. a 4D noise field, so noise can be sampled on a circle in time
+        and therefore repeats exactly (see loopNoise);
+     2. a motion-blur accumulator that averages several sub-frames per
+        displayed frame (the beesandbombs template, explained at
+        https://bleuje.com/tutorial6/).
+   ===================================================================== */
+
+/* ---------- seeded RNG (mulberry32) ---------- */
+function makeRng(seed){
+  let a = (seed >>> 0) || 1;
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let x = Math.imul(a ^ (a >>> 15), 1 | a);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ---------- 4D Perlin noise ----------
+   4 dimensions matter: with 2 spatial inputs you still have 2 left to
+   walk a circle in, which is what turns noise into a perfect loop.     */
+const NoiseField = (function(){
+  let perm = new Uint8Array(512), octaves = 4, falloff = 0.5;
+
+  function seed(s){
+    const rnd = makeRng(s), p = new Uint8Array(256);
+    for(let i=0;i<256;i++) p[i] = i;
+    for(let i=255;i>0;i--){                       // Fisher-Yates
+      const j = (rnd()*(i+1))|0;
+      const tmp = p[i]; p[i] = p[j]; p[j] = tmp;
+    }
+    for(let i=0;i<512;i++) perm[i] = p[i & 255];
+  }
+  seed(1337);
+
+  const fade = t => t*t*t*(t*(t*6-15)+10);
+  const lerp = (a,b,k) => a + k*(b-a);
+
+  // Ken Perlin's 4D gradient: 32 directions, picked by the low 5 bits.
+  function grad(h,x,y,z,w){
+    h &= 31;
+    const u = h < 24 ? x : y;
+    const v = h < 16 ? y : z;
+    const s = h <  8 ? z : w;
+    return ((h&1)?-u:u) + ((h&2)?-v:v) + ((h&4)?-s:s);
+  }
+
+  function raw(x,y,z,w){
+    const X=Math.floor(x)&255, Y=Math.floor(y)&255,
+          Z=Math.floor(z)&255, W=Math.floor(w)&255;
+    x-=Math.floor(x); y-=Math.floor(y); z-=Math.floor(z); w-=Math.floor(w);
+    const u=fade(x), v=fade(y), s=fade(z), r=fade(w);
+
+    const A =perm[X]+Y,    AA=perm[A]+Z,  AB=perm[A+1]+Z;
+    const B =perm[X+1]+Y,  BA=perm[B]+Z,  BB=perm[B+1]+Z;
+    const AAA=perm[AA]+W, AAB=perm[AA+1]+W, ABA=perm[AB]+W, ABB=perm[AB+1]+W;
+    const BAA=perm[BA]+W, BAB=perm[BA+1]+W, BBA=perm[BB]+W, BBB=perm[BB+1]+W;
+
+    return lerp(
+      lerp(
+        lerp(lerp(grad(perm[AAA],  x,  y,  z,  w),
+                  grad(perm[BAA],x-1,  y,  z,  w), u),
+             lerp(grad(perm[ABA],  x,y-1,  z,  w),
+                  grad(perm[BBA],x-1,y-1,  z,  w), u), v),
+        lerp(lerp(grad(perm[AAB],  x,  y,z-1,  w),
+                  grad(perm[BAB],x-1,  y,z-1,  w), u),
+             lerp(grad(perm[ABB],  x,y-1,z-1,  w),
+                  grad(perm[BBB],x-1,y-1,z-1,  w), u), v), s),
+      lerp(
+        lerp(lerp(grad(perm[AAA+1],  x,  y,  z,w-1),
+                  grad(perm[BAA+1],x-1,  y,  z,w-1), u),
+             lerp(grad(perm[ABA+1],  x,y-1,  z,w-1),
+                  grad(perm[BBA+1],x-1,y-1,  z,w-1), u), v),
+        lerp(lerp(grad(perm[AAB+1],  x,  y,z-1,w-1),
+                  grad(perm[BAB+1],x-1,  y,z-1,w-1), u),
+             lerp(grad(perm[ABB+1],  x,y-1,z-1,w-1),
+                  grad(perm[BBB+1],x-1,y-1,z-1,w-1), u), v), s), r);
+  }
+
+  // Fractal sum, matching Processing's default 4 octaves / 0.5 falloff.
+  function fbm(x,y,z,w){
+    let sum=0, amp=1, norm=0, f=1;
+    for(let i=0;i<octaves;i++){
+      sum  += amp * raw(x*f, y*f, z*f, w*f);
+      norm += amp;
+      amp  *= falloff;
+      f    *= 2;
+    }
+    return sum / (norm || 1);
+  }
+
+  return {
+    seed,
+    detail(o,f){ octaves = Math.max(1, o|0); if(f !== undefined) falloff = f; },
+    // Processing-style: 0..1
+    noise(x, y=0, z=0, w=0){
+      return Math.min(1, Math.max(0, fbm(x,y,z,w) * 1.05 + 0.5));
+    },
+    // signed: -1..1
+    snoise(x, y=0, z=0, w=0){
+      return Math.min(1, Math.max(-1, fbm(x,y,z,w) * 2.1));
+    }
+  };
+})();
+
+/* ---------- colour helpers ---------- */
+function hsb2rgb(h,s,v){
+  h = ((h % 1) + 1) % 1;
+  const i = Math.floor(h*6), f = h*6 - i;
+  const p = v*(1-s), q = v*(1-f*s), r = v*(1-(1-f)*s);
+  let R,G,B;
+  switch(i % 6){
+    case 0: R=v; G=r; B=p; break;
+    case 1: R=q; G=v; B=p; break;
+    case 2: R=p; G=v; B=r; break;
+    case 3: R=p; G=q; B=v; break;
+    case 4: R=r; G=p; B=v; break;
+    default:R=v; G=p; B=q;
+  }
+  return [Math.round(R*255), Math.round(G*255), Math.round(B*255)];
+}
+
+/* =====================================================================
+   The sketch API. Everything here is visible as a bare name inside a
+   sketch (the sketch body is evaluated inside `with(API)`).
+   ===================================================================== */
+function createAPI(){
+  let ctx = null;                     // current drawing target
+  let W = 540, H = 540;
+  // sketches always draw in their own W x H space; baseScale lets a
+  // caller render that into a smaller canvas without touching the sketch
+  let baseScale = 1;
+
+  // drawing state that Canvas2D doesn't track for us
+  let doFill = true, doStroke = true;
+  let cmMode = 'rgb', cmA = 255, cmB = 255, cmC = 255, cmAlpha = 255;
+  let rectM = 'corner', ellipseM = 'center';
+  let vtx = null, vtxKind = null;
+  const stack = [];
+
+  let rnd = makeRng(12345);
+
+  // Particle sketches call stroke(brightness) thousands of times per
+  // frame, so the plain-grey case gets a lookup table instead of a
+  // fresh rgba() string every time.
+  const GREY = [];
+  for(let i = 0; i < 256; i++) GREY[i] = 'rgb(' + i + ',' + i + ',' + i + ')';
+
+  function css(args){
+    if(args.length === 0) return '#000';
+    const v = args[0];
+    if(typeof v === 'string') return v;
+    if(args.length === 1 && cmMode === 'rgb' && cmA === 255){
+      const i = v < 0 ? 0 : (v > 255 ? 255 : (v + 0.5) | 0);
+      return GREY[i];
+    }
+
+    let r,g,b,a = 1;
+    if(args.length <= 2){
+      if(cmMode === 'hsb'){
+        const c = hsb2rgb(0, 0, v/cmC); r=c[0]; g=c[1]; b=c[2];
+      } else {
+        r = g = b = Math.round(v/cmA*255);
+      }
+      if(args.length === 2) a = args[1]/cmAlpha;
+    } else {
+      if(cmMode === 'hsb'){
+        const c = hsb2rgb(args[0]/cmA, args[1]/cmB, args[2]/cmC);
+        r=c[0]; g=c[1]; b=c[2];
+      } else {
+        r = Math.round(args[0]/cmA*255);
+        g = Math.round(args[1]/cmB*255);
+        b = Math.round(args[2]/cmC*255);
+      }
+      if(args.length >= 4) a = args[3]/cmAlpha;
+    }
+    a = Math.min(1, Math.max(0, a));
+    return 'rgba('+r+','+g+','+b+','+a+')';
+  }
+
+  function paint(){
+    if(doFill)   ctx.fill();
+    if(doStroke) ctx.stroke();
+  }
+
+  const API = {
+    /* --- values the runner rewrites every sub-frame --- */
+    t: 0, c: 0, frameCount: 0, width: W, height: H,
+    mouseX: 0, mouseY: 0,
+
+    /* --- constants --- */
+    PI: Math.PI, TWO_PI: Math.PI*2, TAU: Math.PI*2,
+    HALF_PI: Math.PI/2, QUARTER_PI: Math.PI/4,
+    CENTER:'center', CORNER:'corner', CORNERS:'corners', RADIUS:'radius',
+    CLOSE:'close', OPEN:'open',
+    LEFT:'left', RIGHT:'right', TOP:'top', BOTTOM:'bottom', BASELINE:'baseline',
+    RGB:'rgb', HSB:'hsb',
+    BUTT:'butt', ROUND:'round', SQUARE:'square', PIE:'pie',
+    BLEND:'source-over', ADD:'lighter', SCREEN:'screen',
+    MULTIPLY:'multiply', DIFFERENCE:'difference',
+
+    /* --- maths (Processing names) --- */
+    abs:Math.abs, min:Math.min, max:Math.max, floor:Math.floor, ceil:Math.ceil,
+    round:Math.round, pow:Math.pow, sqrt:Math.sqrt, exp:Math.exp, log:Math.log,
+    sin:Math.sin, cos:Math.cos, tan:Math.tan, atan:Math.atan, atan2:Math.atan2,
+    asin:Math.asin, acos:Math.acos, sign:Math.sign, hypot:Math.hypot,
+    sq: x => x*x,
+    radians: d => d*Math.PI/180,
+    degrees: r => r*180/Math.PI,
+    map: (v,a,b,c,d) => c + (d-c)*((v-a)/(b-a)),
+    lerp: (a,b,k) => a + (b-a)*k,
+    norm: (v,a,b) => (v-a)/(b-a),
+    constrain: (v,a,b) => v<a?a:(v>b?b:v),
+    dist: (x1,y1,x2,y2) => Math.hypot(x2-x1, y2-y1),
+
+    /* --- randomness --- */
+    randomSeed(s){ rnd = makeRng(s); },
+    random(a,b){
+      if(a === undefined) return rnd();
+      if(b === undefined) return rnd()*a;
+      return a + rnd()*(b-a);
+    },
+    randomGaussian(){
+      let u=0, v=0;
+      while(u === 0) u = rnd();
+      while(v === 0) v = rnd();
+      return Math.sqrt(-2*Math.log(u)) * Math.cos(Math.PI*2*v);
+    },
+    shuffle(arr){
+      const a = arr.slice();
+      for(let i=a.length-1;i>0;i--){
+        const j = (rnd()*(i+1))|0;
+        const tmp=a[i]; a[i]=a[j]; a[j]=tmp;
+      }
+      return a;
+    },
+
+    /* --- noise --- */
+    noise:  (...a) => NoiseField.noise(...a),
+    snoise: (...a) => NoiseField.snoise(...a),
+    noiseSeed: s => NoiseField.seed(s),
+    noiseDetail: (o,f) => NoiseField.detail(o,f),
+
+    /* --- the loop toolkit --------------------------------------------
+       loopNoise walks a circle through the 3rd and 4th noise dimensions,
+       so the value at time 1 is literally the value at time 0.
+       ease is beesandbombs' power easing: g=1 linear, g>1 snappier.
+       mod1/pingpong keep phases inside a single period.               */
+    loopNoise(x, y, time, r = 1){
+      return NoiseField.noise(x, y,
+        r*Math.cos(Math.PI*2*time) + 12.7,
+        r*Math.sin(Math.PI*2*time) + 4.3);
+    },
+    loopSnoise(x, y, time, r = 1){
+      return NoiseField.snoise(x, y,
+        r*Math.cos(Math.PI*2*time) + 12.7,
+        r*Math.sin(Math.PI*2*time) + 4.3);
+    },
+    ease(p, g = 3){
+      if(g === 1) return p;
+      return p < 0.5 ? 0.5*Math.pow(2*p, g)
+                     : 1 - 0.5*Math.pow(2*(1-p), g);
+    },
+    mod1: x => ((x % 1) + 1) % 1,
+    pingpong: p => 1 - Math.abs(2*(((p % 1)+1)%1) - 1),
+
+    /* --- canvas state --- */
+    background(...a){
+      ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = css(a);
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.restore();
+    },
+    fill(...a){ doFill = true; ctx.fillStyle = css(a); },
+    noFill(){ doFill = false; },
+    stroke(...a){ doStroke = true; ctx.strokeStyle = css(a); },
+    noStroke(){ doStroke = false; },
+    strokeWeight(w){ ctx.lineWidth = w; },
+    strokeCap(k){ ctx.lineCap = k === 'center' ? 'round' : (k || 'round'); },
+    strokeJoin(k){ ctx.lineJoin = k || 'round'; },
+    colorMode(m, a=255, b, c, al){
+      cmMode = m;
+      cmA = a; cmB = b === undefined ? a : b; cmC = c === undefined ? a : c;
+      cmAlpha = al === undefined ? a : al;
+    },
+    color: (...a) => css(a),
+    rectMode(m){ rectM = m; },
+    ellipseMode(m){ ellipseM = m; },
+    blendMode(m){ ctx.globalCompositeOperation = m; },
+    alpha(v){ ctx.globalAlpha = v; },
+
+    push(){
+      ctx.save();
+      stack.push([doFill, doStroke, rectM, ellipseM]);
+    },
+    pop(){
+      ctx.restore();
+      const s = stack.pop();
+      if(s){ doFill=s[0]; doStroke=s[1]; rectM=s[2]; ellipseM=s[3]; }
+    },
+    translate(x,y){ ctx.translate(x,y); },
+    rotate(a){ ctx.rotate(a); },
+    scale(x,y){ ctx.scale(x, y === undefined ? x : y); },
+    shearX(a){ ctx.transform(1,0,Math.tan(a),1,0,0); },
+    shearY(a){ ctx.transform(1,Math.tan(a),0,1,0,0); },
+    resetMatrix(){ ctx.setTransform(1,0,0,1,0,0); },
+    clip(x,y,w,h){ ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip(); },
+
+    /* --- shapes --- */
+    line(x1,y1,x2,y2){
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      if(doStroke) ctx.stroke();
+    },
+    // Points are the workhorse of particle sketches, so the small case
+    // takes a much cheaper path than building a circular path.
+    point(x,y){
+      if(!doStroke) return;
+      const w = Math.max(ctx.lineWidth, 0.1);
+      const f = ctx.fillStyle;
+      ctx.fillStyle = ctx.strokeStyle;
+      if(w <= 2.5) ctx.fillRect(x-w/2, y-w/2, w, w);
+      else { ctx.beginPath(); ctx.arc(x,y,w/2,0,Math.PI*2); ctx.fill(); }
+      ctx.fillStyle = f;
+    },
+    rect(x,y,w,h,r){
+      let X=x, Y=y, Wd=w, Ht=h===undefined?w:h;
+      if(rectM === 'center'){ X = x-Wd/2; Y = y-Ht/2; }
+      else if(rectM === 'radius'){ X = x-Wd; Y = y-Ht; Wd*=2; Ht*=2; }
+      else if(rectM === 'corners'){ Wd = w-x; Ht = Ht-y; }
+      ctx.beginPath();
+      if(r) ctx.roundRect(X,Y,Wd,Ht,r); else ctx.rect(X,Y,Wd,Ht);
+      paint();
+    },
+    square(x,y,s,r){ API.rect(x,y,s,s,r); },
+    ellipse(x,y,w,h){
+      let a = w/2, b = (h===undefined?w:h)/2, X=x, Y=y;
+      if(ellipseM === 'corner'){ X = x+a; Y = y+b; }
+      else if(ellipseM === 'radius'){ a = w; b = (h===undefined?w:h); }
+      ctx.beginPath(); ctx.ellipse(X,Y,Math.abs(a),Math.abs(b),0,0,Math.PI*2);
+      paint();
+    },
+    circle(x,y,d){ API.ellipse(x,y,d,d); },
+    arc(x,y,w,h,a1,a2,mode){
+      ctx.beginPath();
+      if(mode === 'pie'){ ctx.moveTo(x,y); }
+      ctx.ellipse(x,y,Math.abs(w)/2,Math.abs(h)/2,0,a1,a2);
+      if(mode === 'close' || mode === 'pie') ctx.closePath();
+      paint();
+    },
+    triangle(x1,y1,x2,y2,x3,y3){
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.lineTo(x3,y3); ctx.closePath(); paint();
+    },
+    quad(x1,y1,x2,y2,x3,y3,x4,y4){
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.lineTo(x3,y3); ctx.lineTo(x4,y4); ctx.closePath(); paint();
+    },
+    bezier(x1,y1,cx1,cy1,cx2,cy2,x2,y2){
+      ctx.beginPath(); ctx.moveTo(x1,y1);
+      ctx.bezierCurveTo(cx1,cy1,cx2,cy2,x2,y2);
+      if(doStroke) ctx.stroke();
+    },
+
+    beginShape(kind){ vtx = []; vtxKind = kind; ctx.beginPath(); },
+    vertex(x,y){
+      if(!vtx) return;
+      if(vtx.length === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      vtx.push(x,y);
+    },
+    endShape(mode){
+      if(!vtx) return;
+      if(mode === 'close') ctx.closePath();
+      if(mode === 'close' && doFill) ctx.fill();
+      else if(doFill && vtxKind === 'fill') ctx.fill();
+      if(doStroke) ctx.stroke();
+      vtx = null; vtxKind = null;
+    },
+
+    /* --- text --- */
+    textSize(s){
+      const m = /(\d+(?:\.\d+)?)px\s+(.*)/.exec(ctx.font) ;
+      ctx.font = s + 'px ' + (m ? m[2] : 'monospace');
+    },
+    textFont(f){
+      const m = /(\d+(?:\.\d+)?)px/.exec(ctx.font);
+      ctx.font = (m ? m[1] : '12') + 'px ' + f;
+    },
+    textAlign(h, v){
+      ctx.textAlign = h || 'left';
+      ctx.textBaseline = v === 'center' ? 'middle' : (v || 'alphabetic');
+    },
+    text(str,x,y){
+      if(doFill)   ctx.fillText(String(str),x,y);
+      if(doStroke && !doFill) ctx.strokeText(String(str),x,y);
+    },
+    textWidth(str){ return ctx.measureText(String(str)).width; },
+
+    /* --- internals used by the runner (not documented to sketches) --- */
+    __bind(c, w, h, scale){
+      ctx = c; W = w; H = h; baseScale = scale || 1;
+      API.width = w; API.height = h;
+      doFill = true; doStroke = true;
+      rectM = 'corner'; ellipseM = 'center';
+      cmMode='rgb'; cmA=cmB=cmC=cmAlpha=255;
+      stack.length = 0; vtx = null;
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    },
+    // point the API at a different canvas without resetting style state
+    __use(c, scale){ ctx = c; baseScale = scale || 1; },
+    __frameReset(){
+      ctx.setTransform(baseScale, 0, 0, baseScale, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      doFill = true; doStroke = true;
+      rectM = 'corner'; ellipseM = 'center';
+      stack.length = 0; vtx = null;
+    }
+  };
+  return API;
+}
+</script>
+<script>
+/* =====================================================================
+   Example sketches. Each one is an original implementation of a
+   technique Etienne Jacob documents in his tutorials — they are meant
+   to be read, broken and rewritten, not preserved.
+   ===================================================================== */
+const SKETCHES = {};
+
+SKETCHES['replacement dots'] = `
+// ---------------------------------------------------------------
+// THE REPLACEMENT TECHNIQUE            bleuje.com/tutorial4
+//
+// One dot walking a long random path can never loop: it ends up
+// somewhere else. So put K dots on the path instead, at evenly
+// spaced progress values p = (i + t) / K. After one loop each dot
+// has slid exactly into the slot its neighbour used to occupy, so
+// the *picture* repeats even though nothing returned home.
+//
+// The stepping quality comes from ease(k, 4): a strong power ease
+// makes each dot hang at a waypoint, then snap to the next.
+// ---------------------------------------------------------------
+
+const W = 540, H = 540;
+const numFrames = 120;
+const samplesPerFrame = 5;   // motion blur sub-frames
+
+const STEPS  = 200;   // waypoints in the path
+const K      = 140;   // dots travelling it at once
+const MARGIN = 90;
+
+let path;
+
+function setup(){
+  randomSeed(7);
+  path = [];
+
+  let x = random(MARGIN, W - MARGIN);
+  let y = random(MARGIN, H - MARGIN);
+  path.push({ x: x, y: y, s: 0 });   // start invisible
+
+  for(let i = 0; i < STEPS; i++){
+    const len = random(25, 140);
+    const dir = floor(random(8)) * QUARTER_PI;   // 8 compass directions
+
+    let nx = x + cos(dir) * len;
+    let ny = y + sin(dir) * len;
+    if(nx > W - MARGIN || nx < MARGIN) nx = x - cos(dir) * len;  // fold back in
+    if(ny > H - MARGIN || ny < MARGIN) ny = y - sin(dir) * len;
+
+    x = nx; y = ny;
+    path.push({ x: x, y: y, s: i === STEPS - 1 ? 0 : random(1.5, 4.2) });
+  }
+}
+
+// draw one dot at progress p in [0,1] along the whole path
+function show(p){
+  const fi = p * (path.length - 1) * 0.9999;
+  const i1 = floor(fi);
+  const k  = ease(fi - i1, 4);      // eased interpolation between waypoints
+  const a  = path[i1], b = path[i1 + 1];
+
+  strokeWeight(lerp(a.s, b.s, k));
+  point(lerp(a.x, b.x, k), lerp(a.y, b.y, k));
+}
+
+function draw_(){
+  background(8);
+  stroke(255);
+  for(let i = 0; i < K; i++) show((i + t) / K);
+}
+`.trim();
+
+
+SKETCHES['noise phase grid'] = `
+// ---------------------------------------------------------------
+// PHASE OFFSETS FROM NOISE             bleuje.com/tutorial2
+//
+// Every tile runs the *same* 1-periodic animation. Only the phase
+// differs, and the phase is read from a smooth 2D noise field.
+// Because a phase only matters modulo 1, literally any offset
+// function loops for free — noise, distance, index, anything.
+// ---------------------------------------------------------------
+
+const W = 540, H = 540;
+const numFrames = 100;
+const samplesPerFrame = 4;
+
+const N     = 15;     // tiles per side
+const SCALE = 0.16;   // how fast the phase field varies in space
+const SPAN  = 2.4;    // total phase spread across the grid
+
+function setup(){
+  noiseSeed(11);
+}
+
+function draw_(){
+  background(10);
+  const s = W / N;
+
+  for(let i = 0; i < N; i++){
+    for(let j = 0; j < N; j++){
+      const off = noise(i * SCALE, j * SCALE) * SPAN;   // the offset field
+      const p   = mod1(t + off);                        // this tile's phase
+      const e   = ease(pingpong(p), 2.7);               // 0 -> 1 -> 0
+
+      push();
+      translate((i + 0.5) * s, (j + 0.5) * s);
+      rotate(e * HALF_PI);
+
+      const size = s * (0.16 + 0.72 * e);
+      noStroke();
+      fill(40 + 215 * e);
+      rectMode(CENTER);
+      rect(0, 0, size, size, size * 0.18);
+      pop();
+    }
+  }
+}
+`.trim();
+
+
+SKETCHES['spiral wave'] = `
+// ---------------------------------------------------------------
+// HIDDEN-LINE WAVE SURFACE
+//
+// Height field:  sin(TWO_PI * (RINGS*r + ARMS*angle - t))
+// RINGS and ARMS are integers, and that is the whole trick. Integer
+// ARMS keeps the field continuous where the angle wraps around, and
+// subtracting t crawls the entire pattern outward by exactly one
+// period per loop.
+//
+// Rows are drawn back to front, and each one is filled with the
+// background colour before it is stroked, so it paints over
+// everything behind it. Painter's algorithm, no depth buffer.
+// ---------------------------------------------------------------
+
+const W = 540, H = 540;
+const numFrames = 100;
+const samplesPerFrame = 2;
+
+const ROWS  = 64;     // scan lines, far to near
+const COLS  = 128;    // samples along each line
+const RINGS = 3;      // ripples from centre outward (integer!)
+const ARMS  = 2;      // spiral arms                 (integer!)
+const AMP   = 60;
+const SX    = 248;    // half width on screen
+const SY    = 116;    // half depth on screen -- this is the tilt
+const BG    = 10;
+
+// reused every row so the inner loop allocates nothing
+const xs = new Float64Array(COLS);
+const ys = new Float64Array(COLS);
+
+function surface(u, v){
+  const r = sqrt(u * u + v * v);
+  const a = atan2(v, u) / TWO_PI;
+  // flat outside the unit disc, and flat at the very centre too --
+  // the spiral term is singular at r = 0 and would just alias there
+  const env = pow(max(0, 1 - r * r), 1.6) * (1 - exp(-r * r * 30));
+  return sin(TWO_PI * (RINGS * r + ARMS * a - t)) * AMP * env;
+}
+
+function draw_(){
+  background(BG);
+  const cx = W / 2, cy = H / 2 + 30;
+
+  for(let j = 0; j < ROWS; j++){
+    const v = map(j, 0, ROWS - 1, -1, 1);     // -1 far, +1 near
+    const y0 = cy + v * SY;
+
+    for(let i = 0; i < COLS; i++){
+      const u = map(i, 0, COLS - 1, -1, 1);
+      xs[i] = cx + u * SX;
+      ys[i] = y0 - surface(u, v);
+    }
+
+    // 1. the opaque ribbon that hides the rows behind this one
+    noStroke();
+    fill(BG);
+    beginShape();
+    for(let i = 0; i < COLS; i++) vertex(xs[i], ys[i]);
+    vertex(xs[COLS - 1], H + 20);
+    vertex(xs[0], H + 20);
+    endShape(CLOSE);
+
+    // 2. the visible line on top of it
+    noFill();
+    stroke(255, map(abs(v), 0, 1, 255, 95));
+    strokeWeight(1.15);
+    beginShape();
+    for(let i = 0; i < COLS; i++) vertex(xs[i], ys[i]);
+    endShape();
+  }
+}
+`.trim();
+
+
+SKETCHES['sphere wave'] = `
+// ---------------------------------------------------------------
+// A SPIRAL WAVE ON A SPHERE
+//
+// The sphere is drawn as latitude rings and never rotates. All the
+// movement is one displacement field:
+//
+//   1 + AMP * sin(TWO_PI * (BANDS*latitude + ARMS*longitude - t))
+//
+// BANDS and ARMS are integers, so the field is continuous where the
+// longitude wraps around, and the -t drags the whole spiral towards
+// the south pole by exactly one period per loop.
+//
+// Depth is faked the cheapest way there is: every ring is drawn
+// twice, faint for the half behind the sphere and bright for the
+// half in front. The front half is always longitude 0..PI, so it
+// needs no clipping.
+// ---------------------------------------------------------------
+
+const W = 540, H = 540;
+const numFrames = 100;
+const samplesPerFrame = 4;
+
+const RINGS = 56;    // latitude circles
+const SEG   = 170;   // samples around each one
+const R     = 196;
+const AMP   = 0.135; // ripple depth, as a fraction of the radius
+const BANDS = 4;     // ripples from pole to pole (integer!)
+const ARMS  = 3;     // spiral arms around the equator (integer!)
+
+function draw_(){
+  background(8);
+  const cx = W / 2, cy = H / 2;
+  noFill();
+
+  // pass 0: the halves hidden behind the sphere, pass 1: the near halves
+  for(let pass = 0; pass < 2; pass++){
+    stroke(255, pass ? 245 : 42);
+    strokeWeight(pass ? 1.5 : 1);
+    const last = pass ? SEG / 2 : SEG;   // the near half is longitude 0..PI
+
+    for(let j = 1; j < RINGS; j++){
+      const phi = PI * j / RINGS;      // 0 at the north pole, PI at the south
+      const u   = j / RINGS;
+      const sy  = cos(phi);            // height of this ring
+      const sr  = sin(phi);            // its radius
+
+      beginShape();
+      for(let i = 0; i <= last; i++){
+        const th = TWO_PI * i / SEG;
+        // sr fades the ripple out at the poles, where the rings are so
+        // small that a full-amplitude wobble just ties them in knots
+        const d = 1 + AMP * sr * sin(TWO_PI * (BANDS * u + ARMS * i / SEG - t));
+        vertex(cx + sr * cos(th) * R * d, cy + sy * R * d);
+      }
+      endShape();
+    }
+  }
+}
+`.trim();
+
+
+SKETCHES['truchet loop'] = `
+// ---------------------------------------------------------------
+// TRUCHET TILES WITH A NOISE PHASE
+//
+// Each tile is the classic pair of quarter arcs. Watch the symmetry
+// here: a quarter turn sends this tile to the *mirrored* tile, not
+// back to itself, so animating a 90 degree turn leaves a visible cut
+// at the end of the loop. A half turn is the real period -- it swaps
+// the two arcs onto each other's corners. Rotate by PI and the last
+// frame is identical to the first, even though every tile has been
+// rewired on the way round.
+// ---------------------------------------------------------------
+
+const W = 540, H = 540;
+const numFrames = 110;
+const samplesPerFrame = 5;
+
+const N     = 9;
+const SCALE = 0.34;
+const SPAN  = 2.0;
+
+function setup(){
+  noiseSeed(23);
+}
+
+function draw_(){
+  background(11);
+  const s = W / N;
+
+  strokeWeight(s * 0.13);
+  strokeCap(BUTT);
+  noFill();
+
+  for(let i = 0; i < N; i++){
+    for(let j = 0; j < N; j++){
+      const off = noise(i * SCALE, j * SCALE) * SPAN;
+      const p   = mod1(t + off);
+      const e   = ease(p, 2.2);                 // one half turn per loop
+      const flip = (i + j) % 2;                 // checkerboard start state
+
+      push();
+      translate((i + 0.5) * s, (j + 0.5) * s);
+      rotate(PI * e + HALF_PI * flip);          // PI is the tile's true period
+
+      stroke(255, 235);
+      arc(-s / 2, -s / 2, s, s, 0, HALF_PI);
+      arc( s / 2,  s / 2, s, s, PI, PI + HALF_PI);
+      pop();
+    }
+  }
+}
+`.trim();
+
+
+SKETCHES['sinusoid packing'] = `
+// ---------------------------------------------------------------
+// SCROLLING SINE CURVES IN PACKED CIRCLES
+//
+// Circles are packed greedily once, in setup(). Inside each one a
+// sine wave scrolls by exactly one period per loop, so the frame at
+// t = 1 matches t = 0. Each circle gets its own integer period count
+// and its own phase offset, which is what stops the grid from
+// reading as a single sheet of moving stripes.
+// ---------------------------------------------------------------
+
+const W = 540, H = 540;
+const numFrames = 100;
+const samplesPerFrame = 4;
+
+const TRIES = 4000;
+let circles;
+
+function setup(){
+  randomSeed(19);
+  circles = [];
+
+  for(let a = 0; a < TRIES; a++){
+    const r = random(9, 62);
+    const x = random(r + 6, W - r - 6);
+    const y = random(r + 6, H - r - 6);
+
+    let ok = true;
+    for(let i = 0; i < circles.length; i++){
+      const c = circles[i];
+      if(dist(x, y, c.x, c.y) < r + c.r + 4){ ok = false; break; }
+    }
+    if(ok) circles.push({
+      x: x, y: y, r: r,
+      k: floor(random(1, 4)),          // sine periods across the circle
+      off: random(1),                  // phase offset
+      dir: random() < 0.5 ? -1 : 1     // scroll direction
+    });
+  }
+}
+
+function draw_(){
+  background(10);
+
+  for(let i = 0; i < circles.length; i++){
+    const c = circles[i];
+
+    noFill();
+    stroke(255, 42);
+    strokeWeight(1);
+    circle(c.x, c.y, c.r * 2);
+
+    stroke(255);
+    strokeWeight(1.6);
+    beginShape();
+    const steps = max(16, floor(c.r * 1.4));
+    for(let s = 0; s <= steps; s++){
+      const u = s / steps;                       // 0..1 across the circle
+      const x = lerp(-c.r, c.r, u);
+      const env = sqrt(max(0, 1 - (x / c.r) * (x / c.r)));  // stay inside
+      const y = sin(TWO_PI * (c.k * u + c.dir * t + c.off)) * c.r * 0.62 * env;
+      vertex(c.x + x, c.y + y);
+    }
+    endShape();
+  }
+}
+`.trim();
+
+
+SKETCHES['hilbert flow'] = `
+// ---------------------------------------------------------------
+// PULSES CHASING ALONG A SPACE-FILLING CURVE
+//
+// The replacement technique again, but as brightness instead of
+// position. Segment i glows with phase mod1(PULSES*i/N - t): the
+// bright heads slide along the curve and, after one loop, each has
+// arrived exactly where the one ahead of it started. The curve
+// itself never moves.
+// ---------------------------------------------------------------
+
+const W = 540, H = 540;
+const numFrames = 120;
+const samplesPerFrame = 3;
+
+const ORDER  = 5;     // curve order -> (2^ORDER)^2 cells
+const PULSES = 5;     // comets running the curve at once (integer!)
+const TAIL   = 3.4;   // higher = shorter, sharper tail
+const MARGIN = 40;
+
+let path;
+
+// standard d -> (x,y) Hilbert mapping
+function hilbert(order){
+  const n = 1 << order, total = n * n, out = [];
+  for(let d = 0; d < total; d++){
+    let rx, ry, tt = d, x = 0, y = 0;
+    for(let s = 1; s < n; s *= 2){
+      rx = 1 & (tt >> 1);
+      ry = 1 & (tt ^ rx);
+      if(ry === 0){
+        if(rx === 1){ x = s - 1 - x; y = s - 1 - y; }
+        const tmp = x; x = y; y = tmp;
+      }
+      x += s * rx;
+      y += s * ry;
+      tt = tt >> 2;
+    }
+    out.push({ x: x, y: y });
+  }
+  return out;
+}
+
+function setup(){
+  const n = 1 << ORDER;
+  const cell = (W - 2 * MARGIN) / (n - 1);
+  path = hilbert(ORDER).map(function(p){
+    return { x: MARGIN + p.x * cell, y: MARGIN + p.y * cell };
+  });
+}
+
+function draw_(){
+  background(9);
+  const N = path.length - 1;
+
+  // the curve itself, very faint
+  noFill();
+  stroke(255, 26);
+  strokeWeight(1);
+  beginShape();
+  for(let i = 0; i <= N; i++) vertex(path[i].x, path[i].y);
+  endShape();
+
+  // and the pulses riding along it
+  for(let i = 0; i < N; i++){
+    const phase = mod1(t - PULSES * i / N);   // 0 at the head, rising down the tail
+    const b = pow(1 - phase, TAIL * PULSES);  // sharp head, fading tail
+    if(b < 0.015) continue;                   // most segments are dark
+
+    stroke(20 + 235 * b);
+    strokeWeight(1 + 4.4 * b);
+    line(path[i].x, path[i].y, path[i + 1].x, path[i + 1].y);
+  }
+}
+`.trim();
+</script>
+<script>
+/* =====================================================================
+   Runner + editor + UI wiring
+   ===================================================================== */
+(function(){
+'use strict';
+
+const $ = id => document.getElementById(id);
+const codeEl  = $('code'), hlEl = $('hl').firstElementChild, gutter = $('gutter');
+const errEl   = $('err'),  view = $('view'), scrub = $('scrub'), tread = $('tread');
+const perfEl  = $('perf'), presetSel = $('preset');
+
+/* ---------------- rendering state ---------------- */
+const api = createAPI();
+const viewCtx = view.getContext('2d');
+const buf = document.createElement('canvas');
+const bufCtx = buf.getContext('2d');
+
+let sketch = null;            // { setup, draw_ }
+let cfg = { W:540, H:540, numFrames:120, samplesPerFrame:4, shutterAngle:1 };
+let frame = 0, playing = true, dead = false;
+let userSamples = 4, userFps = 30;
+// the sketch's own samplesPerFrame wins until the user grabs the slider
+let followSketchSamples = true;
+let clock = 0, lastTs = 0, smoothMs = 0;
+
+const mod1 = x => ((x % 1) + 1) % 1;
+
+/* ---------------- compile ---------------- */
+function compile(code){
+  const preamble = 'with(API){\n';
+  const epilogue = '\n;return{' +
+    'setup: typeof setup === "function" ? setup : null,' +
+    'draw_: typeof draw_ === "function" ? draw_ : null,' +
+    'cfg:{' +
+      'W: typeof W === "number" ? W : 540,' +
+      'H: typeof H === "number" ? H : 540,' +
+      'numFrames: typeof numFrames === "number" ? numFrames : 120,' +
+      'samplesPerFrame: typeof samplesPerFrame === "number" ? samplesPerFrame : 4,' +
+      'shutterAngle: typeof shutterAngle === "number" ? shutterAngle : 1' +
+    '}};}';
+
+  let factory;
+  try {
+    factory = new Function('API', preamble + code + epilogue);
+  } catch(e){
+    return fail('Syntax error: ' + e.message);
+  }
+
+  let built;
+  try { built = factory(api); }
+  catch(e){ return fail('Error while loading sketch:\n' + describe(e)); }
+
+  if(!built.draw_) return fail('This sketch has no draw_() function.\n' +
+                              'Define  function draw_(){ ... }  — it is called once per sub-frame.');
+
+  cfg = built.cfg;
+  cfg.numFrames = Math.max(1, Math.round(cfg.numFrames));
+  resize(cfg.W, cfg.H);
+
+  api.__bind(bufCtx, cfg.W, cfg.H);
+  api.t = 0; api.frameCount = 0;
+
+  if(built.setup){
+    try { built.setup(); }
+    catch(e){ return fail('Error in setup():\n' + describe(e)); }
+  }
+
+  sketch = built;
+  dead = false;
+  if(followSketchSamples){
+    userSamples = Math.max(1, Math.min(12, Math.round(cfg.samplesPerFrame)));
+    $('samples').value = userSamples;
+    $('samples-v').textContent = userSamples;
+  }
+  scrub.max = cfg.numFrames - 1;
+  if(frame >= cfg.numFrames) frame = 0;
+  clearErr();
+  renderFrame(frame);
+  return true;
+}
+
+function describe(e){
+  const stack = (e && e.stack) ? String(e.stack).split('\n').slice(0,3).join('\n') : '';
+  // line numbers in the stack are offset by the one-line preamble
+  return (e && e.message ? e.message : String(e)) +
+         (stack.indexOf('<anonymous>') >= 0 ? '\n(line numbers are shifted by 1)' : '');
+}
+function fail(msg){ sketch = null; dead = true; showErr(msg); return false; }
+function showErr(m){ errEl.textContent = m; errEl.style.display = 'block'; }
+function clearErr(){ errEl.style.display = 'none'; errEl.textContent = ''; }
+
+function resize(w,h){
+  if(view.width !== w || view.height !== h){ view.width = w; view.height = h; }
+  if(buf.width  !== w || buf.height  !== h){ buf.width  = w; buf.height  = h; }
+}
+
+/* ---------------- the motion blur template ----------------
+   Every displayed frame is the average of `samples` sub-frames spread
+   across a shutter interval. That average is what turns hard edges into
+   the smeared, cinematic look these loops are known for.            */
+function renderFrame(f){
+  if(!sketch || dead) return;
+  const t0 = performance.now();
+  const s = Math.max(1, userSamples);
+  const W = cfg.W, H = cfg.H;
+
+  viewCtx.setTransform(1,0,0,1,0,0);
+  viewCtx.globalAlpha = 1;
+  viewCtx.globalCompositeOperation = 'source-over';
+  viewCtx.fillStyle = '#000';
+  viewCtx.fillRect(0,0,W,H);
+  viewCtx.globalCompositeOperation = 'lighter';   // additive: sum of 1/s = mean
+  viewCtx.globalAlpha = 1/s;
+
+  for(let sa = 0; sa < s; sa++){
+    bufCtx.setTransform(1,0,0,1,0,0);
+    bufCtx.clearRect(0,0,W,H);
+
+    api.t = mod1((f + sa * cfg.shutterAngle / s) / cfg.numFrames);
+    api.frameCount = f;
+    api.__frameReset();
+
+    try { sketch.draw_(); }
+    catch(e){
+      viewCtx.globalAlpha = 1;
+      viewCtx.globalCompositeOperation = 'source-over';
+      fail('Error in draw_():\n' + describe(e));
+      return;
+    }
+    viewCtx.drawImage(buf, 0, 0);
+  }
+
+  viewCtx.globalAlpha = 1;
+  viewCtx.globalCompositeOperation = 'source-over';
+
+  const ms = performance.now() - t0;
+  smoothMs = smoothMs ? smoothMs * 0.85 + ms * 0.15 : ms;
+  perfEl.textContent = smoothMs.toFixed(1) + ' ms/frame';
+  tread.textContent = 't ' + (f / cfg.numFrames).toFixed(3) +
+    ' · f ' + String(f).padStart(3,'0') + '/' + cfg.numFrames;
+  if(scrub.valueAsNumber !== f) scrub.value = f;
+}
+
+/* ---------------- playback ---------------- */
+function tick(ts){
+  requestAnimationFrame(tick);
+  if(!sketch || dead) return;
+
+  const dt = lastTs ? Math.min(0.25, (ts - lastTs) / 1000) : 0;
+  lastTs = ts;
+
+  if(recording){ stepRecording(dt); return; }
+  if(!playing) return;
+
+  clock += dt;
+  const step = 1 / userFps;
+  if(clock < step) return;
+  const advance = Math.floor(clock / step);
+  clock -= advance * step;
+  frame = (frame + advance) % cfg.numFrames;
+  renderFrame(frame);
+}
+requestAnimationFrame(tick);
+
+/* ---------------- recording one exact loop ---------------- */
+let recording = false, recorder = null, recTrack = null,
+    recFrame = 0, recClock = 0, recChunks = [];
+
+function startRecording(){
+  if(!sketch || dead || recording) return;
+  let stream;
+  try { stream = view.captureStream(0); }
+  catch(e){ showErr('This browser cannot capture the canvas: ' + e.message); return; }
+
+  recTrack = stream.getVideoTracks()[0];
+  const types = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+  const mime = types.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+  if(!mime){ showErr('MediaRecorder is not available in this browser.'); return; }
+
+  recChunks = [];
+  recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 12000000 });
+  recorder.ondataavailable = e => { if(e.data.size) recChunks.push(e.data); };
+  recorder.onstop = () => {
+    const blob = new Blob(recChunks, { type: 'video/webm' });
+    download(URL.createObjectURL(blob), currentName() + '.webm', true);
+    recording = false;
+    $('btn-rec').textContent = '● Record loop';
+    $('btn-rec').classList.remove('rec');
+  };
+
+  recording = true; recFrame = 0; recClock = 0; frame = 0;
+  $('btn-rec').textContent = '■ Recording…';
+  $('btn-rec').classList.add('rec');
+  recorder.start();
+  renderFrame(0);
+  if(recTrack.requestFrame) recTrack.requestFrame();
+  recFrame = 1;
+}
+
+function stepRecording(dt){
+  recClock += dt;
+  const step = 1 / userFps;
+  while(recClock >= step && recFrame <= cfg.numFrames){
+    recClock -= step;
+    if(recFrame >= cfg.numFrames){
+      recorder.stop();
+      return;
+    }
+    renderFrame(recFrame);
+    if(recTrack.requestFrame) recTrack.requestFrame();
+    recFrame++;
+  }
+}
+
+function download(url, name, revoke){
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  if(revoke) setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function currentName(){
+  return (presetSel.value || 'sketch').replace(/[^a-z0-9]+/gi,'-');
+}
+
+/* ---------------- syntax highlighting ---------------- */
+const KEYWORDS = ['const','let','var','function','return','if','else','for','while',
+  'do','break','continue','new','class','this','typeof','instanceof','in','of',
+  'null','true','false','undefined','Math','Array','Object'];
+const APIWORDS = ['background','fill','noFill','stroke','noStroke','strokeWeight',
+  'strokeCap','strokeJoin','colorMode','color','rectMode','ellipseMode','blendMode',
+  'push','pop','translate','rotate','scale','shearX','shearY','resetMatrix','clip',
+  'line','point','rect','square','ellipse','circle','arc','triangle','quad','bezier',
+  'beginShape','vertex','endShape','text','textSize','textFont','textAlign','textWidth',
+  'map','lerp','norm','constrain','dist','sq','radians','degrees','abs','min','max',
+  'floor','ceil','round','pow','sqrt','exp','log','sin','cos','tan','atan','atan2',
+  'asin','acos','hypot','random','randomSeed','randomGaussian','shuffle',
+  'noise','snoise','noiseSeed','noiseDetail','loopNoise','loopSnoise',
+  'ease','mod1','pingpong','setup','draw_'];
+const CONSTWORDS = ['t','c','width','height','frameCount','PI','TWO_PI','TAU','HALF_PI',
+  'QUARTER_PI','CENTER','CORNER','CORNERS','RADIUS','CLOSE','OPEN','LEFT','RIGHT','TOP',
+  'BOTTOM','BASELINE','RGB','HSB','BLEND','ADD','SCREEN','MULTIPLY','DIFFERENCE',
+  'BUTT','ROUND','SQUARE','numFrames','samplesPerFrame','shutterAngle','W','H'];
+
+const HL_RE = new RegExp(
+  '(\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/)' +
+  '|(\'(?:[^\'\\\\\\n]|\\\\.)*\'|"(?:[^"\\\\\\n]|\\\\.)*")' +
+  '|\\b(' + KEYWORDS.join('|')  + ')\\b' +
+  '|\\b(' + APIWORDS.join('|')  + ')\\b' +
+  '|\\b(' + CONSTWORDS.join('|')+ ')\\b' +
+  '|\\b(\\d+(?:\\.\\d+)?)\\b', 'g');
+
+function highlight(src){
+  const esc = src.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+  return esc.replace(HL_RE, (m, c, s, k, f, p, n) =>
+      c ? '<span class="c">'+c+'</span>'
+    : s ? '<span class="s">'+s+'</span>'
+    : k ? '<span class="k">'+k+'</span>'
+    : f ? '<span class="f">'+f+'</span>'
+    : p ? '<span class="p">'+p+'</span>'
+    : n ? '<span class="n">'+n+'</span>' : m);
+}
+
+function paintEditor(){
+  const src = codeEl.value;
+  hlEl.innerHTML = highlight(src) + '\n';
+  const lines = src.split('\n').length;
+  let g = '';
+  for(let i = 1; i <= lines; i++) g += i + '\n';
+  gutter.textContent = g;
+  syncScroll();
+}
+function syncScroll(){
+  const p = $('hl');
+  p.scrollTop = codeEl.scrollTop;
+  p.scrollLeft = codeEl.scrollLeft;
+  gutter.scrollTop = codeEl.scrollTop;
+}
+
+/* ---------------- editor behaviour ---------------- */
+let autoTimer = null;
+codeEl.addEventListener('input', () => {
+  paintEditor();
+  persist();
+  if($('auto').checked){
+    clearTimeout(autoTimer);
+    autoTimer = setTimeout(run, 700);
+  }
+});
+codeEl.addEventListener('scroll', syncScroll);
+codeEl.addEventListener('keydown', e => {
+  if(e.key === 'Tab'){
+    e.preventDefault();
+    const s = codeEl.selectionStart, en = codeEl.selectionEnd;
+    codeEl.setRangeText('  ', s, en, 'end');
+    codeEl.dispatchEvent(new Event('input'));
+  } else if((e.metaKey || e.ctrlKey) && e.key === 'Enter'){
+    e.preventDefault(); run();
+  } else if((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's'){
+    e.preventDefault(); saveJs();
+  }
+});
+
+function run(){
+  clearTimeout(autoTimer);
+  smoothMs = 0;
+  compile(codeEl.value);
+}
+
+/* ---------------- presets & persistence ---------------- */
+const names = Object.keys(SKETCHES);
+names.forEach(n => {
+  const o = document.createElement('option');
+  o.value = n; o.textContent = n;
+  presetSel.appendChild(o);
+});
+
+const LS = 'looplab.v1';
+function persist(){
+  try {
+    localStorage.setItem(LS, JSON.stringify({
+      preset: presetSel.value, code: codeEl.value
+    }));
+  } catch(e){ /* private mode — not important */ }
+}
+function load(name, code){
+  presetSel.value = name;
+  codeEl.value = code !== undefined ? code : SKETCHES[name];
+  paintEditor();
+  frame = 0; clock = 0;
+  run();
+  persist();
+}
+
+presetSel.addEventListener('change', () => {
+  followSketchSamples = true;
+  load(presetSel.value);
+});
+$('btn-run').addEventListener('click', run);
+$('btn-reset').addEventListener('click', () => load(presetSel.value, SKETCHES[presetSel.value]));
+$('btn-save').addEventListener('click', saveJs);
+
+function saveJs(){
+  const blob = new Blob([codeEl.value], { type: 'text/javascript' });
+  download(URL.createObjectURL(blob), currentName() + '.js', true);
+}
+
+/* ---------------- preview controls ---------------- */
+$('btn-play').addEventListener('click', () => {
+  playing = !playing;
+  $('btn-play').textContent = playing ? '❚❚ Pause' : '▶ Play';
+});
+$('samples').addEventListener('input', e => {
+  followSketchSamples = false;
+  userSamples = +e.target.value;
+  $('samples-v').textContent = userSamples;
+  renderFrame(frame);
+});
+$('fps').addEventListener('input', e => {
+  userFps = +e.target.value;
+  $('fps-v').textContent = userFps;
+});
+scrub.addEventListener('input', e => {
+  playing = false;
+  $('btn-play').textContent = '▶ Play';
+  frame = +e.target.value;
+  renderFrame(frame);
+});
+$('btn-png').addEventListener('click', () => {
+  download(view.toDataURL('image/png'), currentName() + '-f' + frame + '.png');
+});
+$('btn-rec').addEventListener('click', () => {
+  if(recording && recorder) recorder.stop(); else startRecording();
+});
+
+/* mouse over the canvas drives `c`, and dragging scrubs `t` —
+   the same debug habit the original Processing template uses */
+view.addEventListener('pointermove', e => {
+  const r = view.getBoundingClientRect();
+  const mx = (e.clientX - r.left) / r.width;
+  const my = (e.clientY - r.top) / r.height;
+  api.mouseX = mx * cfg.W; api.mouseY = my * cfg.H;
+  api.c = my;
+  if(e.buttons & 1){
+    playing = false;
+    $('btn-play').textContent = '▶ Play';
+    frame = Math.max(0, Math.min(cfg.numFrames - 1,
+      Math.floor(mod1(mx) * cfg.numFrames)));
+    renderFrame(frame);
+  }
+});
+
+/* ---------------- splitter ---------------- */
+(function(){
+  const split = $('split'), left = $('left'), main = $('main');
+  let dragging = false;
+  split.addEventListener('pointerdown', e => {
+    dragging = true; split.classList.add('drag');
+    split.setPointerCapture(e.pointerId);
+  });
+  split.addEventListener('pointermove', e => {
+    if(!dragging) return;
+    const r = main.getBoundingClientRect();
+    if(window.innerWidth <= 820){
+      const h = (e.clientY - r.top) / r.height * 100;
+      left.style.height = Math.max(15, Math.min(85, h)) + '%';
+    } else {
+      const w = (e.clientX - r.left) / r.width * 100;
+      left.style.width = Math.max(15, Math.min(85, w)) + '%';
+    }
+  });
+  split.addEventListener('pointerup', e => {
+    dragging = false; split.classList.remove('drag');
+    split.releasePointerCapture(e.pointerId);
+  });
+})();
+
+/* ---------------- docs ---------------- */
+$('docs').innerHTML = [
+'<h3>What this is</h3>',
+'<p>A playground for <b>seamless animation loops</b> in the style of Etienne Jacob ',
+'(<a href="https://bleuje.com/animationsite/" target="_blank" rel="noopener">bleuje.com</a>). ',
+'Sketches are plain JavaScript with a Processing-flavoured drawing API, a global ',
+'<code>t</code> that runs 0 → 1 over exactly one loop, and the beesandbombs motion-blur ',
+'template baked into the renderer.</p>',
+'<div class="note">Etienne Jacob&rsquo;s own Processing sources live at ',
+'<a href="https://github.com/Bleuje/processing-animations-code" target="_blank" rel="noopener">',
+'github.com/Bleuje/processing-animations-code</a> and are <b>copyright, all rights reserved</b> ',
+'— so none of it is reproduced here. Everything in this playground was written from scratch ',
+'against the techniques he explains publicly in his ',
+'<a href="https://bleuje.com/tutorials/" target="_blank" rel="noopener">tutorials</a>. ',
+'Read his code at the source; play with it here.</div>',
+
+'<h3>Sketch shape</h3>',
+'<div class="grid">',
+'<div>W, H</div><div>canvas size in pixels</div>',
+'<div>numFrames</div><div>frames in one loop</div>',
+'<div>samplesPerFrame</div><div>motion-blur sub-frames (the slider overrides it live)</div>',
+'<div>shutterAngle</div><div>how far the blur reaches into the next frame, usually 1</div>',
+'<div>setup()</div><div>runs once when the sketch compiles</div>',
+'<div>draw_()</div><div>runs once per sub-frame — draw everything from <code>t</code> alone</div>',
+'</div>',
+'<p>Anything you compute from <code>t</code> and nothing else will loop. Never accumulate ',
+'state across frames: <code>draw_()</code> is called several times per displayed frame, and ',
+'out of order while scrubbing.</p>',
+
+'<h3>The loop toolkit</h3>',
+'<div class="grid">',
+'<div>t</div><div>global time in [0,1) — the only clock you get</div>',
+'<div>ease(p, g)</div><div>power easing; g=1 linear, g=3 snappy, g=5 nearly a step</div>',
+'<div>mod1(x)</div><div>wrap into [0,1) — how phase offsets stay seamless</div>',
+'<div>pingpong(p)</div><div>0 → 1 → 0 over one period</div>',
+'<div>loopNoise(x, y, t, r)</div><div>2D noise that walks a circle in time, so it repeats exactly</div>',
+'<div>loopSnoise(…)</div><div>same, signed −1..1</div>',
+'<div>noise(x,y,z,w)</div><div>4D Perlin, 0..1 (<code>snoise</code> for −1..1)</div>',
+'<div>c</div><div>0..1 from the mouse&rsquo;s vertical position — a free tweaking knob</div>',
+'</div>',
+'<p>Drag on the canvas to scrub the loop by hand.</p>',
+
+'<h3>Drawing</h3>',
+'<div class="grid">',
+'<div>background fill stroke</div><div>noFill, noStroke, strokeWeight, strokeCap, blendMode(ADD)</div>',
+'<div>rect square circle ellipse</div><div>plus arc, line, point, triangle, quad, bezier</div>',
+'<div>beginShape / vertex / endShape</div><div>endShape(CLOSE) to close the path</div>',
+'<div>push pop translate rotate scale</div><div>the usual transform stack</div>',
+'<div>colorMode(HSB, 1)</div><div>then fill(hue, sat, bri) in 0..1</div>',
+'<div>random randomSeed noise</div><div>seed them in setup() so the loop is reproducible</div>',
+'</div>',
+
+'<h3>Keys</h3>',
+'<div class="grid">',
+'<div>Ctrl / Cmd + Enter</div><div>run the sketch</div>',
+'<div>Ctrl / Cmd + S</div><div>download the sketch as .js</div>',
+'<div>Tab</div><div>two spaces</div>',
+'</div>'
+].join('');
+
+$('btn-docs').addEventListener('click', () => {
+  $('docs').classList.toggle('open');
+});
+
+/* ---------------- boot ---------------- */
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem(LS) || 'null'); } catch(e){}
+if(saved && saved.code && SKETCHES[saved.preset]) load(saved.preset, saved.code);
+else load(names[0]);
+
+})();
+</script>
+</body>
+</html>
