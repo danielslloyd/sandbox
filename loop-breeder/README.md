@@ -68,7 +68,7 @@ lose.
 
 ## The genome
 
-Six independent genes. They're orthogonal on purpose: each one closes its own
+Seven independent genes. They're orthogonal on purpose: each one closes its own
 loop, so **any** combination of them also loops. That's what makes random draws
 usable rather than noise.
 
