@@ -71,6 +71,28 @@ header .sub{color:var(--dim);font-size:11px}
   grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
 }
 
+/* ---------- theme checkboxes ---------- */
+#themes-bar{
+  display:flex;align-items:flex-start;gap:11px;padding:8px 12px;flex:none;
+  border-bottom:1px solid var(--line);background:var(--panel-2);
+}
+#themes-bar .tlabel{
+  font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--gold);padding-top:4px;flex:none;
+}
+#themes-bar .thint{color:var(--dimmer);font-size:10.5px;padding-top:4px;flex:none}
+#themes{display:flex;flex-wrap:wrap;gap:6px;flex:1;min-width:0}
+.theme{
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--panel);border:1px solid var(--line);border-radius:999px;
+  padding:3px 10px 3px 7px;font-size:11.5px;cursor:pointer;user-select:none;
+  transition:border-color .12s,background .12s,color .12s;
+}
+.theme:hover{border-color:var(--line-2)}
+.theme input{accent-color:var(--gold);cursor:pointer;margin:0}
+.theme.on{border-color:var(--gold);background:#241e11;color:var(--gold)}
+.theme:focus-within{outline:1px solid var(--gold);outline-offset:1px}
+
 /* ---------- population tile ---------- */
 .tile{
   position:relative;background:#000;border:1px solid var(--line);
@@ -215,6 +237,7 @@ textarea.paste{
     <span class="spacer"></span>
     <span class="chip">gen <b id="gen-n">0</b></span>
     <span class="chip"><b id="keep-n">0</b> kept</span>
+    <span class="chip"><b id="theme-n">0</b> themes</span>
     <span class="chip"><b id="tree-n">0</b> in tree</span>
     <button id="btn-help">How this works</button>
   </header>
@@ -238,6 +261,14 @@ textarea.paste{
         <button id="btn-load" class="ghost">Import</button>
         <button id="btn-reset" class="ghost">Clear</button>
       </div>
+
+      <div id="themes-bar">
+        <span class="tlabel">Themes</span>
+        <div id="themes"></div>
+        <span class="thint">guides the next round</span>
+        <button id="btn-themes-clear" class="ghost" style="flex:none">clear</button>
+      </div>
+
       <div id="pop"></div>
     </div>
 
@@ -847,6 +878,25 @@ const LAYOUTS = {
     if(ok) els.push({ x: x, y: y, s: rad * 2 });
   }`
   },
+  nest: {
+    label: 'nest', ordered: false, centred: true,
+    note: 'self-similar rings, one octave per level',
+    // levels sit at exact powers of two, and twist is an INTEGER number of
+    // slots -- both are required for the zoom motion to close its loop
+    rand: r => ({ lev: r.int(8, 12), per: r.int(4, 9),
+                  R: n2(r.flt(0.40, 0.52)), twist: r.int(0, 3) }),
+    emit: p => `
+  const R0 = W * ${p.R};
+  for(let k = 0; k < ${p.lev}; k++){
+    const rad = R0 * pow(2, -k);
+    for(let q = 0; q < ${p.per}; q++){
+      const th = TWO_PI * (q + k * ${p.twist}) / ${p.per};
+      els.push({ x: W/2 + rad * cos(th), y: H/2 + rad * sin(th),
+                 s: rad * 0.5, lev: k, ang: th, rad0: rad,
+                 slot: TWO_PI / ${p.per} });
+    }
+  }`
+  },
   walk: {
     label: 'walk', ordered: true, path: true, note: 'random waypoint path',
     rand: r => ({ steps: r.int(150, 320), lo: r.int(14, 30), hi: r.int(55, 100), m: r.int(50, 100) }),
@@ -891,7 +941,12 @@ const SHAPES = {
   dwell:    { label: 'dwell',     rand: r => ({ sat: n2(r.flt(0.35, 0.85)) }),
               emit: p => `constrain(map(cos(TWO_PI * p), ${p.sat}, -${p.sat}, 0, 1), 0, 1)` },
   ramp:     { label: 'ramp',      rand: r => ({ g: n2(r.flt(1.2, 4.2)) }),
-              emit: p => `ease(p, ${p.g})` }
+              emit: p => `ease(p, ${p.g})` },
+  // overshoot and settle. pingpong first so w(0) === w(1) and the loop holds
+  elastic:  { label: 'elastic',   rand: r => ({ k: n2(r.flt(7, 11)) }),
+              emit: p => `(function(q){ return q <= 0 ? 0 : ` +
+                         `pow(2, -${p.k} * q) * sin((q * 10 - 0.75) * TWO_PI / 3) + 1; ` +
+                         `})(pingpong(p))` }
 };
 
 /* ---------- motions: turn (element, phase) into a transform ---------- */
@@ -934,6 +989,36 @@ const MOTIONS = {
     rand: r => ({ amt: n2(r.flt(0.1, 0.5)) }),
     emit: p => `  const q = ${p.amt} * (w - 0.5) * 2;
   px += (e.x - W/2) * q; py += (e.y - H/2) * q;`
+  },
+  // Infinite zoom. Everything scales by two over one loop, so level k lands
+  // exactly where level k-1 started -- the replacement technique, in
+  // log-radius space. The fade windows hide the two ends of the stack.
+  zoom: {
+    label: 'zoom', needsNest: true, usesFade: true,
+    rand: r => ({ slots: r.int(-2, 2) }),
+    emit: p => `  const z = pow(2, t);
+  const zr = e.rad0 * z;
+  // the drift is a whole number of angular slots, so after one doubling
+  // level k lands exactly on the slots level k-1 started in
+  const aa = e.ang + ${p.slots} * e.slot * t;
+  px = W/2 + zr * cos(aa);
+  py = H/2 + zr * sin(aa);
+  sc = z * (0.65 + 0.35 * w);
+  // fade out both ends of the octave stack: the level that grows off the
+  // canvas and the one that shrinks to nothing are both invisible, which
+  // is what lets the stack be finite
+  fade = constrain((0.78 - zr / W) / 0.22, 0, 1) *
+         constrain((zr / W - 0.006) / 0.02, 0, 1);`
+  },
+  // one element becomes two, which separate and rejoin
+  split: {
+    label: 'split', copies: 2, needsSolo: true,
+    rand: r => ({ amt: n2(r.flt(0.45, 1.5)),
+                  ang: r.pick(['0', 'HALF_PI', 'QUARTER_PI', 'e.a']) }),
+    emit: p => `  const dv = e.s * ${p.amt} * w * (ci * 2 - 1);
+  const sa = ${p.ang};
+  px += dv * cos(sa); py += dv * sin(sa);
+  sc *= 1 - 0.3 * w;`
   },
   convoy: {
     label: 'convoy', needsOrder: true, replacement: true,
@@ -1014,6 +1099,16 @@ const RENDERS = {
   }
 };
 
+/* ---------- symmetry: a static spatial transform over the whole field ---------- */
+const SYMMETRY = {
+  none:   { label: 'none',     k: 1, rand: () => ({}) },
+  mirror: { label: 'mirror',   k: 2, flip: true, rand: () => ({}) },
+  rot2:   { label: '2-fold',   k: 2, rand: () => ({}) },
+  rot3:   { label: '3-fold',   k: 3, rand: () => ({}) },
+  rot4:   { label: '4-fold',   k: 4, rand: () => ({}) },
+  rot6:   { label: '6-fold',   k: 6, rand: () => ({}) }
+};
+
 /* ---------- palettes ---------- */
 const LOOKS = [
   { id: 'ink',    bg: 9,   ink: 255, label: 'white on black' },
@@ -1023,31 +1118,124 @@ const LOOKS = [
 ];
 
 /* =====================================================================
+   THEMES
+   ---------------------------------------------------------------------
+   High-level ideas lifted from the source set. A theme is not a gene: it
+   is a *bias* over several genes at once. Ticking one narrows what the
+   random draws are allowed to pick for the axes it cares about, and
+   leaves every other axis free -- so two ticked themes blend instead of
+   fighting.
+   ===================================================================== */
+const THEMES = [
+  { id:'zoom',      label:'Infinite zoom',  blurb:'one loop is one doubling',
+    bias:{ layout:['nest'], motion:['zoom'] } },
+  { id:'rotation',  label:'Rotation',       blurb:'turns and orbits',
+    bias:{ motion:['spin','orbit'], shape:['ramp','sine'] } },
+  { id:'fib',       label:'Fibonacci',      blurb:'phyllotaxis packing',
+    bias:{ layout:['disc','sphere'], offset:['spiral','index','angular'] } },
+  { id:'waves',     label:'Waves',          blurb:'travelling displacement',
+    bias:{ motion:['wave','breathe'], offset:['radial','diagonal','spiral'] } },
+  { id:'split',     label:'Splitting',      blurb:'elements divide and rejoin',
+    bias:{ motion:['split'], shape:['dwell','pingpong'] } },
+  { id:'ripples',   label:'Ripples',        blurb:'propagation from the centre',
+    bias:{ offset:['radial'], shape:['sine','dwell'], layout:['rings','disc','grid'] } },
+  { id:'procession',label:'Procession',     blurb:'replacement along a path',
+    bias:{ layout:['curve','walk','rings'], motion:['convoy'] } },
+  { id:'rewiring',  label:'Rewiring',       blurb:'Truchet tiles turning',
+    bias:{ layout:['grid','brick'], render:['arcs'], motion:['spin'], shape:['ramp'] } },
+  { id:'folding',   label:'Space-filling',  blurb:'Hilbert curve',
+    bias:{ layout:['curve'], render:['polyline','dot','ring'] } },
+  { id:'packing',   label:'Packing',        blurb:'circles of many sizes',
+    bias:{ layout:['packing'], render:['ring','wavelet','dot'] } },
+  { id:'depth',     label:'Depth',          blurb:'a shaded 3D body',
+    bias:{ layout:['sphere'] } },
+  { id:'kaleido',   label:'Kaleidoscope',   blurb:'mirrored symmetry',
+    bias:{ symmetry:['mirror','rot3','rot4','rot6'] } },
+  { id:'snap',      label:'Mechanical',     blurb:'dwells hard at both ends',
+    bias:{ shape:['dwell','ramp'] } },
+  { id:'elastic',   label:'Elastic',        blurb:'overshoots and settles',
+    bias:{ shape:['elastic'] } },
+  { id:'lattice',   label:'Lattice',        blurb:'flat tiling, no centre',
+    bias:{ layout:['grid','brick'] } },
+  { id:'moire',     label:'Moire',          blurb:'dense fields that interfere',
+    bias:{ layout:['disc','rings'], render:['dot','ring'], offset:['angular','spiral'] } }
+];
+
+// Rebuilt by the UI whenever the checkboxes change: axis -> allowed kinds.
+let THEME_BIAS = {};
+let ACTIVE_THEMES = [];
+
+function setThemes(ids){
+  ACTIVE_THEMES = ids.slice();
+  THEME_BIAS = {};
+  ids.forEach(id => {
+    const th = THEMES.find(t => t.id === id);
+    if(!th) return;
+    Object.keys(th.bias).forEach(axis => {
+      THEME_BIAS[axis] = (THEME_BIAS[axis] || []).concat(
+        th.bias[axis].filter(k => (THEME_BIAS[axis] || []).indexOf(k) < 0));
+    });
+  });
+}
+
+// every kind choice goes through here, so a bias applies to fresh draws,
+// mutations and single-gene rerolls alike
+function pickKind(r, axis, all){
+  const favoured = (THEME_BIAS[axis] || []).filter(k => all.indexOf(k) >= 0);
+  return favoured.length ? r.pick(favoured) : r.pick(all);
+}
+
+/* A ticked theme should be visible in the offspring, not merely likelier.
+   Mutation only touches an axis with probability `rate`, so after mutating
+   we check each theme actually landed and force one of its axes if not. */
+function applyThemes(g, r){
+  ACTIVE_THEMES.forEach(id => {
+    const th = THEMES.find(t => t.id === id);
+    if(!th) return;
+    const axes = Object.keys(th.bias);
+    const present = axes.some(a => g[a] && th.bias[a].indexOf(g[a].kind) >= 0);
+    if(present) return;
+    const axis = r.pick(axes);
+    const kind = r.pick(th.bias[axis]);
+    const tbl = TABLES[axis] || SYMMETRY;
+    if(tbl && tbl[kind]) g[axis] = { kind: kind, p: tbl[kind].rand(r) };
+  });
+  return g;
+}
+
+/* =====================================================================
    RANDOM GENOMES, MUTATION, CROSSOVER
    ===================================================================== */
-const AXES = ['layout', 'offset', 'shape', 'motion', 'render', 'look'];
+const AXES = ['layout', 'offset', 'shape', 'motion', 'render', 'symmetry', 'look'];
 
 function randomGene(axis, r, g){
   switch(axis){
     case 'layout': {
-      const kind = r.pick(Object.keys(LAYOUTS));
+      const kind = pickKind(r, 'layout', Object.keys(LAYOUTS));
       return { kind: kind, p: LAYOUTS[kind].rand(r) };
     }
     case 'offset': {
-      const kind = r.pick(Object.keys(OFFSETS));
+      const kind = pickKind(r, 'offset', Object.keys(OFFSETS));
       return { kind: kind, p: OFFSETS[kind].rand(r) };
     }
     case 'shape': {
-      const kind = r.pick(Object.keys(SHAPES));
+      const kind = pickKind(r, 'shape', Object.keys(SHAPES));
       return { kind: kind, p: SHAPES[kind].rand(r) };
     }
     case 'motion': {
-      const kind = r.pick(Object.keys(MOTIONS));
+      const kind = pickKind(r, 'motion', Object.keys(MOTIONS));
       return { kind: kind, p: MOTIONS[kind].rand(r) };
     }
     case 'render': {
-      const kind = r.pick(Object.keys(RENDERS));
+      const kind = pickKind(r, 'render', Object.keys(RENDERS));
       return { kind: kind, p: RENDERS[kind].rand(r) };
+    }
+    case 'symmetry': {
+      // symmetry multiplies the drawing cost, so plain stays the default
+      const favoured = THEME_BIAS.symmetry;
+      const kind = (favoured && favoured.length) ? r.pick(favoured)
+                 : (r.odds(0.6) ? 'none' : r.pick(Object.keys(SYMMETRY)));
+      return { kind: kind, p: {} };
     }
     case 'look':
       return {
@@ -1075,14 +1263,23 @@ const RCOST = { dot: 1, square: 2.5, ring: 3, arcs: 4, bar: 2,
 const POSITIONAL = ['orbit', 'jump', 'wave', 'breathe'];
 
 function reroll(g, axis, kinds, r){
-  const kind = r.pick(kinds);
-  const tbl = { layout: LAYOUTS, offset: OFFSETS, shape: SHAPES,
-                motion: MOTIONS, render: RENDERS }[axis];
+  // prefer a replacement the ticked themes would also accept
+  const kind = pickKind(r, axis, kinds);
+  const tbl = TABLES[axis];
   g[axis] = { kind: kind, p: tbl[kind].rand(r) };
 }
 
+// Is this axis being held in place by a ticked theme? When repair has to
+// break a conflict it should give way on the axis the user did NOT ask for,
+// otherwise ticking a box quietly stops meaning anything.
+function pinned(axis){
+  return (THEME_BIAS[axis] || []).length > 0;
+}
+
 function capCounts(g){
-  const cost = RCOST[g.render.kind] || 2;
+  const sym = SYMMETRY[(g.symmetry || {}).kind] || SYMMETRY.none;
+  const copies = MOTIONS[g.motion.kind].copies || 1;
+  const cost = (RCOST[g.render.kind] || 2) * sym.k * copies;
   const maxN = Math.max(60, Math.floor(2600 / cost));
   const L = g.layout;
   if(L.kind === 'disc')   L.p.n = Math.min(L.p.n, maxN);
@@ -1093,11 +1290,18 @@ function capCounts(g){
     L.p.order = Math.min(L.p.order, maxN >= 1024 ? 5 : (maxN >= 256 ? 4 : 3));
   if(L.kind === 'rings')
     L.p.per = Math.min(L.p.per, Math.max(8, Math.floor(maxN / L.p.rings * 2)));
-  if(L.kind === 'packing') L.p.tries = Math.min(L.p.tries, 3200);
+  if(L.kind === 'packing'){
+    // symmetry overlays the whole field k times, so a dense packing turns to
+    // mush; fewer, larger circles keep it readable
+    L.p.tries = Math.min(L.p.tries, Math.round(3200 / sym.k));
+    L.p.lo = Math.max(L.p.lo, Math.round(7 * Math.sqrt(sym.k)));
+    L.p.hi = Math.max(L.p.hi, L.p.lo + 12);
+  }
+  if(L.kind === 'nest') L.p.per = Math.max(3, Math.min(L.p.per, Math.floor(maxN / L.p.lev)));
 }
 
 const TABLES = { layout: LAYOUTS, offset: OFFSETS, shape: SHAPES,
-                 motion: MOTIONS, render: RENDERS };
+                 motion: MOTIONS, render: RENDERS, symmetry: SYMMETRY };
 
 function repair(g, r){
   // 0. every gene must belong to its own axis. Cheap to check, and it also
@@ -1112,7 +1316,9 @@ function repair(g, r){
   if(g.render.kind === 'polyline' && g.layout.kind === 'sphere')
     reroll(g, 'layout', ['curve','walk','rings','disc'], r);
   if(RENDERS[g.render.kind].needsOrder && !LAYOUTS[g.layout.kind].ordered){
-    if(r.odds(0.5)) reroll(g, 'layout', ['rings','disc','sphere','curve','walk'], r);
+    if(pinned('layout') && !pinned('render'))
+      reroll(g, 'render', ['dot','ring','square'], r);
+    else if(r.odds(0.5)) reroll(g, 'layout', ['rings','disc','sphere','curve','walk'], r);
     else reroll(g, 'render', ['dot','ring','square'], r);
   }
 
@@ -1121,7 +1327,9 @@ function repair(g, r){
   //     reads as static noise. Phyllotaxis and Fibonacci spheres are ordered
   //     but not paths.
   if(MOTIONS[g.motion.kind].needsOrder && !LAYOUTS[g.layout.kind].path){
-    if(r.odds(0.5)) reroll(g, 'layout', ['curve','walk','rings'], r);
+    if(pinned('layout') && !pinned('motion'))
+      reroll(g, 'motion', POSITIONAL.concat(['pulse','spin']), r);
+    else if(r.odds(0.5)) reroll(g, 'layout', ['curve','walk','rings'], r);
     else reroll(g, 'motion', POSITIONAL.concat(['pulse','spin']), r);
   }
 
@@ -1132,8 +1340,11 @@ function repair(g, r){
 
   // 3. Truchet arcs assume a square cell
   if(RENDERS[g.render.kind].needsGrid
-     && g.layout.kind !== 'grid' && g.layout.kind !== 'brick')
-    reroll(g, 'render', ['dot','ring','square','cross'], r);
+     && g.layout.kind !== 'grid' && g.layout.kind !== 'brick'){
+    if(pinned('render') && !pinned('layout'))
+      reroll(g, 'layout', ['grid','brick'], r);
+    else reroll(g, 'render', ['dot','ring','square','cross'], r);
+  }
 
   // 4. a spin you cannot see is a wasted gene
   if(g.motion.kind === 'spin' && !RENDERS[g.render.kind].oriented)
@@ -1151,13 +1362,37 @@ function repair(g, r){
     g.motion.p.turn = r.odds(0.35) ? 'TWO_PI' : sym;
   }
 
+  // 5b. the zoom motion reads e.rad0 / e.ang, which only the nest layout
+  //     provides -- and a nest is what makes the doubling self-similar
+  if(g.motion.kind === 'zoom' && g.layout.kind !== 'nest'){
+    const alt = ['pulse','spin','orbit','jump','wave','breathe','split'];
+    if(pinned('layout') && !pinned('motion')) reroll(g, 'motion', alt, r);
+    else if(r.odds(0.7)) g.layout = { kind: 'nest', p: LAYOUTS.nest.rand(r) };
+    else reroll(g, 'motion', alt, r);
+  }
+
+  // 5b-ii. A zoom substitutes level k for level k-1 every loop, so an element's
+  //   appearance has to depend only on where it sits in the octave -- never on
+  //   which element it is. Any per-element phase offset breaks that (it shows up
+  //   through renders that embed the phase, like wavelet), so the field is
+  //   flattened and the whole stack shares one phase: mod1(t).
+  if(g.motion.kind === 'zoom' && g.offset.kind !== 'none')
+    g.offset = { kind: 'none', p: {} };
+
+  // 5c. split draws two copies per element, which a collective render ignores
+  if(g.motion.kind === 'split' && RENDERS[g.render.kind].collective)
+    reroll(g, 'render', ['dot','ring','square','cross','bar'], r);
+
   // 6. a convoy owns the whole picture, so a collective render makes no sense
   if(g.motion.kind === 'convoy' && RENDERS[g.render.kind].collective)
     reroll(g, 'render', ['dot','ring','square','bar'], r);
 
   // 7. a bare walk is only legible as a convoy or a polyline
-  if(g.layout.kind === 'walk' && g.motion.kind !== 'convoy' && g.render.kind !== 'polyline')
-    g.motion = { kind: 'convoy', p: MOTIONS.convoy.rand(r) };
+  if(g.layout.kind === 'walk' && g.motion.kind !== 'convoy' && g.render.kind !== 'polyline'){
+    if(pinned('motion') && !pinned('layout'))
+      reroll(g, 'layout', ['grid','brick','rings','disc','packing'], r);
+    else g.motion = { kind: 'convoy', p: MOTIONS.convoy.rand(r) };
+  }
 
   capCounts(g);
   return g;
@@ -1167,7 +1402,7 @@ function randomGenome(seed){
   const r = rng(seed);
   const g = { seed: seed, parents: [], gen: 0 };
   AXES.forEach(a => { g[a] = randomGene(a, r, g); });
-  return repair(g, r);
+  return repair(applyThemes(g, r), r);
 }
 
 function mutate(parent, seed, rate){
@@ -1198,42 +1433,59 @@ function mutate(parent, seed, rate){
     const axis = AXES[r.int(0, AXES.length - 1)];   // one draw, used twice
     g[axis] = randomGene(axis, r, g);
   }
-  return repair(g, r);
+  return repair(applyThemes(g, r), r);
 }
 
 function crossover(a, b, seed){
   const r = rng(seed);
   const g = { seed: seed, parents: [a.id, b.id], gen: Math.max(a.gen || 0, b.gen || 0) + 1 };
   AXES.forEach(axis => {
-    g[axis] = JSON.parse(JSON.stringify(r.odds(0.5) ? a[axis] : b[axis]));
+    const src = r.odds(0.5) ? a[axis] : b[axis];
+    g[axis] = JSON.parse(JSON.stringify(src || a[axis] || b[axis]));
   });
-  return repair(g, r);
+  return repair(applyThemes(g, r), r);
 }
 
 /* =====================================================================
    GENOME -> SOURCE
    ===================================================================== */
 function describe(g){
+  const sym = SYMMETRY[(g.symmetry || {}).kind] || SYMMETRY.none;
   const bits = [
     LAYOUTS[g.layout.kind].label,
     MOTIONS[g.motion.kind].label,
     RENDERS[g.render.kind].label
   ];
+  if(sym.k > 1) bits.push(sym.label);
   return bits.join(' · ');
 }
 
 function genomeToSource(g){
-  const lay = LAYOUTS[g.layout.kind];
-  const look = LOOKS.find(l => l.id === g.look.kind) || LOOKS[0];
-  const lp = g.look.p;
+  const lay    = LAYOUTS[g.layout.kind];
+  const look   = LOOKS.find(l => l.id === g.look.kind) || LOOKS[0];
+  const lp     = g.look.p;
+  const sym    = SYMMETRY[(g.symmetry || {}).kind] || SYMMETRY.none;
+  const motion = MOTIONS[g.motion.kind];
+  const copies = motion.copies || 1;
+
   const offsetExpr = OFFSETS[g.offset.kind].emit(g.offset.p);
   const shapeExpr  = SHAPES[g.shape.kind].emit(g.shape.p);
-  const isConvoy   = g.motion.kind === 'convoy';
-  const isPoly     = g.render.kind === 'polyline';
+
+  // The zoom motion is the only one that fades elements, and switching the
+  // colour calls to their alpha form costs a string build per element -- so
+  // only the genomes that need it pay for it.
+  let renderCode = RENDERS[g.render.kind].emit(g.render.p);
+  if(motion.usesFade)
+    renderCode = renderCode
+      .replace(/stroke\(INK\)/g, 'stroke(INK, 255 * fade)')
+      .replace(/fill\(INK\)/g,   'fill(INK, 255 * fade)');
+
+  const ind = (code, n) => code.split('\n')
+    .map(l => l.trim() ? ' '.repeat(n) + l : l).join('\n');
 
   const head = `// ${describe(g)}
 // layout ${g.layout.kind} · offset ${g.offset.kind} · shape ${g.shape.kind}
-// motion ${g.motion.kind} · render ${g.render.kind} · seed ${g.seed}
+// motion ${g.motion.kind} · render ${g.render.kind} · symmetry ${sym.label} · seed ${g.seed}
 
 const W = 540, H = 540;
 const numFrames = ${lp.frames};
@@ -1260,6 +1512,7 @@ ${lay.emit(g.layout.p)}
     e.a = (atan2(dy, dx) + TWO_PI) % TWO_PI;
     e.jx = (noise(e.x * 0.01, e.y * 0.01, 9.1) - 0.5) * e.s * 2;
     e.jy = (noise(e.x * 0.01, e.y * 0.01, 4.7) - 0.5) * e.s * 2;
+    if(e.rad0 === undefined){ e.rad0 = e.r * W * 0.5; e.ang = e.a; e.slot = 0; }
   }
 }
 
@@ -1270,42 +1523,53 @@ function offsetOf(e){
 }
 `;
 
-  if(isConvoy){
-    const K = g.motion.p.K, ge = g.motion.p.g;
-    return head + `
-// Replacement technique: ${K} markers ride the path at evenly spaced
-// progress values. After one loop each has slid into its neighbour's
-// slot, so the picture repeats without anything returning home.
-const K = ${K};
+  // symmetry is a static spatial transform, so it cannot affect the loop
+  const wrapSym = body => {
+    if(sym.k <= 1) return body;
+    const step = sym.flip
+      ? 'if(sy) scale(-1, 1);'
+      : 'rotate(TWO_PI * sy / ' + sym.k + ');';
+    return `  // ${sym.label} symmetry: the whole field is drawn ${sym.k} times
+  for(let sy = 0; sy < ${sym.k}; sy++){
+    push();
+    translate(W/2, H/2);
+    ${step}
+    translate(-W/2, -H/2);
 
-function draw_(){
-  background(BG);
-  const last = els.length - 1;
+${ind(body, 2)}
+
+    pop();
+  }`;
+  };
+
+  let body;
+
+  if(g.motion.kind === 'convoy'){
+    const K = g.motion.p.K, ge = g.motion.p.g;
+    body = `  // Replacement technique: ${K} markers ride the path at evenly spaced
+  // progress values. After one loop each has slid into its neighbour's
+  // slot, so the picture repeats without anything returning home.
+  const K = ${K}, last = els.length - 1;
 
   for(let i = 0; i < K; i++){
-    const p = (i + t * ${lp.dir}) / K;
-    const fi = mod1(p) * last * 0.9999;
+    const p = mod1((i + t * ${lp.dir}) / K);
+    const fi = p * last * 0.9999;
     const i1 = floor(fi);
     const k = ease(fi - i1, ${ge});   // a strong ease makes them step, not glide
     const a = els[i1], b = els[i1 + 1];
 
     const e = { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k),
-                s: max(2, lerp(a.s, b.s, k)), u: p, r: 0, a: 0, jx: 0, jy: 0 };
+                s: max(2, lerp(a.s, b.s, k)),
+                u: p, r: 0, a: 0, jx: 0, jy: 0, lev: 0, ang: 0, rad0: 0 };
     const w = ${shapeExpr};
-    let px = e.x, py = e.y, sc = 1, rot = 0;
+    let px = e.x, py = e.y, sc = 1, rot = 0, fade = 1;
 
-${RENDERS[g.render.kind].emit(g.render.p)}
-  }
-}
-`;
-  }
+${ind(renderCode, 2)}
+  }`;
 
-  if(isPoly){
-    return head + `
-// One polyline threaded through every element in layout order, with
-// each vertex displaced by its own phase.
-function draw_(){
-  background(BG);
+  } else if(g.render.kind === 'polyline'){
+    body = `  // One polyline threaded through every element in layout order,
+  // each vertex displaced by its own phase.
   noFill(); stroke(INK); strokeWeight(WT);
 
   beginShape();
@@ -1313,30 +1577,39 @@ function draw_(){
     const e = els[n];
     const p = mod1(t * ${lp.dir} + offsetOf(e));
     const w = ${shapeExpr};
-    let px = e.x, py = e.y, sc = 1, rot = 0;
-${MOTIONS[g.motion.kind].emit(g.motion.p)}
+    let px = e.x, py = e.y, sc = 1, rot = 0, fade = 1;
+${ind(motion.emit(g.motion.p), 2)}
     vertex(px, py);
   }
-  endShape(${g.render.p.close ? 'CLOSE' : ''});
-}
-`;
+  endShape(${g.render.p.close ? 'CLOSE' : ''});`;
+
+  } else {
+    const inner = motion.emit(g.motion.p) + '\n' + renderCode;
+    const per = copies > 1
+      ? `    // ${copies} copies per element, mirrored about its own centre
+    for(let ci = 0; ci < ${copies}; ci++){
+      let px = e.x, py = e.y, sc = 1, rot = 0, fade = 1;
+${ind(inner, 4)}
+    }`
+      : `    let px = e.x, py = e.y, sc = 1, rot = 0, fade = 1;
+${ind(inner, 2)}`;
+
+    body = `  for(let n = 0; n < els.length; n++){
+    const e = els[n];
+    // the local phase -- same 1-periodic animation everywhere,
+    // just started at a different moment
+    const p = mod1(t * ${lp.dir} + offsetOf(e));
+    const w = ${shapeExpr};
+
+${per}
+  }`;
   }
 
   return head + `
 function draw_(){
   background(BG);
 
-  for(let n = 0; n < els.length; n++){
-    const e = els[n];
-    // the local phase -- same 1-periodic animation everywhere,
-    // just started at a different moment
-    const p = mod1(t * ${lp.dir} + offsetOf(e));
-    const w = ${shapeExpr};
-    let px = e.x, py = e.y, sc = 1, rot = 0;
-
-${MOTIONS[g.motion.kind].emit(g.motion.p)}
-${RENDERS[g.render.kind].emit(g.render.p)}
-  }
+${wrapSym(body)}
 }
 `;
 }
@@ -1738,13 +2011,14 @@ function detailLoop(ts){
 }
 
 const AXIS_LABEL = { layout:'layout', offset:'offset', shape:'shape',
-                     motion:'motion', render:'render', look:'look' };
+                     motion:'motion', render:'render', symmetry:'symmetry',
+                     look:'look' };
 
 function geneSummary(g, axis){
   const gene = g[axis];
   if(!gene) return '—';
-  const tbl = { layout: LAYOUTS, offset: OFFSETS, shape: SHAPES,
-                motion: MOTIONS, render: RENDERS }[axis];
+  const tbl = { layout: LAYOUTS, offset: OFFSETS, shape: SHAPES, motion: MOTIONS,
+                render: RENDERS, symmetry: SYMMETRY }[axis];
   const name = tbl ? (tbl[gene.kind] || {}).label || gene.kind : gene.kind;
   const ps = Object.keys(gene.p || {}).map(k => k + ' ' + gene.p[k]).join('  ');
   return name + (ps ? '  <em>' + escapeHtml(ps) + '</em>' : '');
@@ -1761,7 +2035,7 @@ function buildDetailBody(node){
       'single direction. Each reroll adds a child to the population and to the lineage.</div>' +
       '<div class="genes"></div>';
     const list = sec.querySelector('.genes');
-    ['layout','offset','shape','motion','render','look'].forEach(axis => {
+    ['layout','offset','shape','motion','render','symmetry','look'].forEach(axis => {
       const row = document.createElement('div');
       row.className = 'gene';
       row.innerHTML = '<span class="axis">' + AXIS_LABEL[axis] + '</span>' +
@@ -1941,7 +2215,8 @@ function persist(){
     });
     localStorage.setItem(LS, JSON.stringify({
       nodes: slim, order: world.order, population: world.population,
-      gen: world.gen, nextId: world.nextId, seedCounter: world.seedCounter
+      gen: world.gen, nextId: world.nextId, seedCounter: world.seedCounter,
+      themes: ACTIVE_THEMES
     }));
   } catch(e){ /* quota or private mode; the tree just won't survive a reload */ }
 }
@@ -1959,9 +2234,45 @@ function restore(data){
   world.gen = data.gen || 0;
   world.nextId = data.nextId || (world.order.length + 1);
   world.seedCounter = data.seedCounter || 1;
+  const themes = (data.themes || []).filter(id => THEMES.some(t => t.id === id));
+  setThemes(themes);
+  renderThemes(themes);
   renderPopulation();
   renderTree();
 }
+
+/* ---------------- themes ---------------- */
+function renderThemes(active){
+  const host = $('themes');
+  host.innerHTML = '';
+  THEMES.forEach(th => {
+    const lab = document.createElement('label');
+    lab.className = 'theme' + (active.indexOf(th.id) >= 0 ? ' on' : '');
+    lab.title = th.blurb;
+    lab.innerHTML = '<input type="checkbox" value="' + th.id + '"' +
+      (active.indexOf(th.id) >= 0 ? ' checked' : '') + '>' + escapeHtml(th.label);
+    host.appendChild(lab);
+  });
+  $('theme-n').textContent = active.length;
+}
+
+function readThemes(){
+  const ids = Array.prototype.slice
+    .call($('themes').querySelectorAll('input:checked'))
+    .map(i => i.value);
+  setThemes(ids);
+  $('themes').querySelectorAll('.theme').forEach(l => {
+    l.classList.toggle('on', l.querySelector('input').checked);
+  });
+  $('theme-n').textContent = ids.length;
+  persist();
+}
+
+$('themes').addEventListener('change', readThemes);
+$('btn-themes-clear').addEventListener('click', () => {
+  $('themes').querySelectorAll('input').forEach(i => { i.checked = false; });
+  readThemes();
+});
 
 /* ---------------- wiring ---------------- */
 $('pop').addEventListener('click', e => {
@@ -2077,10 +2388,25 @@ $('help-card').innerHTML = [
 '<div>layout</div><div>where the elements live — grid, rings, disc, sphere, Hilbert curve, packing, walk</div>',
 '<div>offset</div><div>the phase-delay field: radial, angular, noise, index, diagonal, spiral</div>',
 '<div>shape</div><div>the 1-periodic function each element runs — sine, ping-pong, dwell, ramp</div>',
-'<div>motion</div><div>what that function does — pulse, spin, orbit, jump, wave, breathe, convoy</div>',
+'<div>motion</div><div>what that function does — pulse, spin, orbit, jump, wave, breathe, split, zoom, convoy</div>',
 '<div>render</div><div>how one element is drawn — dot, square, ring, arcs, bar, cross, wavelet, polyline</div>',
+'<div>symmetry</div><div>mirror, or 2/3/4/6-fold rotation over the whole field</div>',
 '<div>look</div><div>palette, stroke weight, motion blur, loop length</div>',
 '</div>',
+
+'<h3>Themes</h3>',
+'<p>A theme is not a gene — it is a <em>bias</em> across several genes at once. ',
+'Ticking <b>Kaleidoscope</b> narrows the symmetry gene and leaves everything else ',
+'free; ticking <b>Rewiring</b> pins layout, render, motion and shape together, ',
+'because Truchet tiles only work as a set. Tick two and they blend rather than ',
+'fight: each one constrains only the axes it names.</p>',
+'<p>Themes apply to fresh populations, to every child in a breed, and to single-gene ',
+'rerolls. They are a steering wheel, not a filter — nothing is thrown away, the ',
+'search space is just narrowed where you pointed it.</p>',
+'<p class="note">Where a theme collides with something structural — a convoy needs ',
+'a path to march along, Truchet arcs need a square cell — the theme wins and the ',
+'unpinned gene gives way. That is why ticking a box keeps meaning something ten ',
+'generations later.</p>',
 
 '<h3>Deterministic, until it needs not to be</h3>',
 '<p>Everything above is ordinary code — mutation is a seeded perturbation of a ' ,
@@ -2111,8 +2437,11 @@ $('help').addEventListener('click', e => { if(e.target.id === 'help') $('help').
 let saved = null;
 try { saved = JSON.parse(localStorage.getItem(LS) || 'null'); } catch(e){}
 if(saved && saved.order && saved.order.length){
-  try { restore(saved); } catch(e){ seedPopulation(); }
+  try { restore(saved); }
+  catch(e){ setThemes([]); renderThemes([]); seedPopulation(); }
 } else {
+  setThemes([]);
+  renderThemes([]);
   seedPopulation();
 }
 })();

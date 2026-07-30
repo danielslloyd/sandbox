@@ -7,7 +7,7 @@ one click away.
 
 Open `index.html`. No build, no dependencies, no network.
 
-![twelve draws from the genome space](preview.png)
+![one draw per theme](preview.png)
 
 Companion to [`../bleuje-playground`](../bleuje-playground) (LoopLab) — anything
 bred here can be copied straight into that editor as a normal sketch.
@@ -27,6 +27,45 @@ Populations converge fast, so one child in five is a *bold* mutant at roughly
 double the mutation rate. Without it you get twelve near-identical tiles by the
 third generation and nothing left to choose between.
 
+## Themes
+
+Sixteen high-level ideas, lifted from the source set, as checkboxes above the
+population. A theme is **not** a gene — it's a *bias across several genes at
+once*, applied to fresh populations, to every child in a breed, and to
+single-gene rerolls.
+
+| theme | what it pins |
+|---|---|
+| Infinite zoom | `nest` layout + `zoom` motion — one loop is one doubling |
+| Rotation | spin / orbit, ramp or sine shaping |
+| Fibonacci | phyllotaxis disc or sphere, spiral/index offset |
+| Waves | travelling displacement, radial or diagonal propagation |
+| Splitting | the `split` motion — each element divides and rejoins |
+| Ripples | radial offset field, sine or dwell shaping |
+| Procession | replacement technique along a path |
+| Rewiring | Truchet tiles: grid + arcs + spin + ramp, all four together |
+| Space-filling | Hilbert curve |
+| Packing | circles of many sizes |
+| Depth | a shaded 3D body |
+| Kaleidoscope | mirror or 2/3/4/6-fold symmetry |
+| Mechanical | dwell — sits hard at both ends of the loop |
+| Elastic | overshoot and settle |
+| Lattice | flat tiling, no centre |
+| Moiré | dense fields that interfere |
+
+Ticking two blends them rather than making them fight, because each constrains
+only the axes it names: **Kaleidoscope** touches symmetry alone and leaves
+everything else free, while **Rewiring** pins layout, render, motion *and* shape
+together because Truchet tiles only work as a set. All 120 pairs are tested.
+
+**Themes win over repair.** Where a theme collides with something structural — a
+convoy needs a path to march along, Truchet arcs need a square cell — the pinned
+gene stays and the unpinned one gives way. Without that rule, repair silently
+undid the checkbox and a tick stopped meaning anything by the third generation.
+Measured stickiness is 100% for fifteen of the sixteen; `Depth` is 91%, because
+"sphere" and "convoy" are a genuine structural conflict that something has to
+lose.
+
 ## The genome
 
 Six independent genes. They're orthogonal on purpose: each one closes its own
@@ -38,8 +77,9 @@ usable rather than noise.
 | `layout` | where elements live — grid, brick, rings, disc, sphere, Hilbert curve, packing, walk |
 | `offset` | the phase-delay field — radial, angular, noise, index, diagonal, spiral |
 | `shape` | the 1-periodic function each element runs — sine, ping-pong, dwell, ramp |
-| `motion` | what that function does — pulse, spin, orbit, jump, wave, breathe, convoy |
+| `motion` | what that function does — pulse, spin, orbit, jump, wave, breathe, split, zoom, convoy |
 | `render` | how one element is drawn — dot, square, ring, arcs, bar, cross, wavelet, polyline |
+| `symmetry` | mirror, or 2/3/4/6-fold rotation over the whole field |
 | `look` | palette, stroke weight, motion blur, loop length |
 
 A genome compiles to readable JavaScript, and **that source is the single source
@@ -61,6 +101,12 @@ discarded — each of these was a bug found by testing, not a guess:
   true period is a half turn.
 - A **polyline** only shows motion that moves its vertices, so `pulse` and
   `spin` would leave it frozen.
+- **Infinite zoom** substitutes level *k* for level *k−1* every loop, so an
+  element's appearance may depend only on where it sits in the octave stack,
+  never on which element it is. Two consequences: the per-level angular drift
+  must be a whole number of angular slots, and the phase-offset field has to be
+  flat — any per-element offset shows up through renders that embed the phase
+  (`wavelet` caught this) and cuts the loop open.
 
 ## Deterministic, until it needs not to be
 
