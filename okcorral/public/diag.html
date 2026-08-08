@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>OK Corral — sensor check</title>
+<style>
+  :root {
+    --bg: #14100d;
+    --panel: #1e1813;
+    --line: #3a2e24;
+    --ink: #e8dcc8;
+    --dim: #9a8873;
+    --hot: #d98032;
+    --good: #7fbf6a;
+    --bad: #d8574b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.45 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    -webkit-text-size-adjust: 100%;
+  }
+  body { padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 17px; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 2px; }
+  .sub { color: var(--dim); font-size: 12.5px; margin-bottom: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+  .panel h2 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin: 0 0 10px; font-weight: 600; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 3px 0; }
+  .row .k { color: var(--dim); font-size: 12.5px; }
+  .row .v { font-variant-numeric: tabular-nums; }
+  .big { font-size: 30px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  button {
+    font: inherit; font-size: 14px; color: var(--ink);
+    background: #2b221a; border: 1px solid var(--line); border-radius: 8px;
+    padding: 11px 14px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  button:active { background: #3a2d22; }
+  button.primary { background: var(--hot); border-color: var(--hot); color: #1a1209; font-weight: 600; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btns button { flex: 1 1 auto; }
+  .ok { color: var(--good); } .no { color: var(--bad); } .warn { color: var(--hot); }
+  canvas { display: block; width: 100%; height: 200px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: right; padding: 4px 2px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--dim); font-weight: 500; }
+  .note { color: var(--dim); font-size: 12px; margin-top: 10px; line-height: 1.5; }
+  a { color: var(--hot); }
+</style>
+</head>
+<body>
+
+<h1>Sensor check</h1>
+<div class="sub">Track A. Answers whether the heading is good enough to build a game on.</div>
+
+<div class="panel" id="permPanel">
+  <h2>Sensor</h2>
+  <div class="row"><span class="k">status</span><span class="v" id="permStatus">not started</span></div>
+  <div class="row"><span class="k">events</span><span class="v" id="rate">—</span></div>
+  <div class="btns" style="margin-top:10px">
+    <button class="primary" id="btnStart">Enable motion</button>
+  </div>
+  <div class="note" id="httpsNote" hidden>
+    Not on HTTPS. iOS will refuse to hand over motion sensors. See the README for
+    <code>mkcert</code> setup.
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Heading</h2>
+  <canvas id="rose"></canvas>
+  <div class="row"><span class="k">yaw (zeroed)</span><span class="v big" id="yaw">—</span></div>
+  <div class="row"><span class="k">pitch</span><span class="v" id="pitch">—</span></div>
+  <div class="row"><span class="k">raw yaw</span><span class="v" id="rawYaw">—</span></div>
+  <div class="row"><span class="k">alpha / beta / gamma</span><span class="v" id="abg">—</span></div>
+  <div class="row"><span class="k">quaternion</span><span class="v" id="quat">—</span></div>
+  <div class="btns" style="margin-top:10px">
+    <button id="btnZero">Zero here</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Drift &amp; scale test</h2>
+  <div class="note" style="margin-top:0">
+    <b>Drift:</b> point at a fixed landmark, hit <i>Zero here</i>, then wave the phone around
+    for a few minutes. Come back to the same landmark and hit <b>Mark</b>. The reading is
+    your accumulated drift — it should be a few degrees, not tens.<br><br>
+    <b>Scale:</b> zero, turn a careful 90&deg;, hit <b>Mark</b>. Should read 90 &plusmn; a couple.
+  </div>
+  <div class="btns" style="margin-top:12px">
+    <button class="primary" id="btnMark">Mark</button>
+    <button id="btnClear">Clear</button>
+    <button id="btnCsv">Export CSV</button>
+  </div>
+  <table style="margin-top:12px">
+    <thead><tr><th>#</th><th>t (s)</th><th>yaw</th><th>drift rate</th></tr></thead>
+    <tbody id="marks"><tr><td colspan="4" style="color:var(--dim);text-align:center">no marks yet</td></tr></tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h2>Verdict</h2>
+  <div id="verdict" style="font-size:13.5px">Enable motion and take a few marks.</div>
+</div>
+
+<div class="note"><a href="/">&larr; back to the game</a></div>
+
+<script type="module">
+import { createOrientation, requestPermission, needsPermission, isSupported } from './js/orientation.js';
+
+const $ = (id) => document.getElementById(id);
+const orient = createOrientation();
+const S = orient.state;
+
+const deg = (r) => (r * 180) / Math.PI;
+const fmt = (n, p = 1) => (n >= 0 ? ' ' : '') + n.toFixed(p);
+
+if (location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(location.hostname)) {
+  $('httpsNote').hidden = false;
+}
+if (!isSupported()) {
+  $('permStatus').innerHTML = '<span class="no">no DeviceOrientationEvent</span>';
+  $('btnStart').disabled = true;
+}
+
+$('btnStart').addEventListener('click', async () => {
+  const res = needsPermission() ? await requestPermission() : 'granted';
+  if (res === 'granted') {
+    orient.start();
+    $('permStatus').innerHTML = '<span class="ok">granted, listening</span>';
+    $('btnStart').textContent = 'Listening';
+    $('btnStart').classList.remove('primary');
+  } else {
+    $('permStatus').innerHTML = '<span class="no">denied</span> — reload and retry';
+  }
+});
+
+$('btnZero').addEventListener('click', () => {
+  orient.zero();
+  zeroedAt = performance.now();
+  marks.length = 0;
+  renderMarks();
+});
+
+// --- marks ---------------------------------------------------------------
+let zeroedAt = performance.now();
+const marks = [];
+
+$('btnMark').addEventListener('click', () => {
+  const t = (performance.now() - zeroedAt) / 1000;
+  marks.push({ t, yaw: deg(S.yaw), pitch: deg(S.pitch) });
+  renderMarks();
+});
+$('btnClear').addEventListener('click', () => { marks.length = 0; renderMarks(); });
+$('btnCsv').addEventListener('click', () => {
+  const rows = [['index', 'seconds_since_zero', 'yaw_deg', 'pitch_deg', 'drift_deg_per_min']];
+  marks.forEach((m, i) => rows.push([i + 1, m.t.toFixed(2), m.yaw.toFixed(2), m.pitch.toFixed(2),
+    (m.t > 1 ? (m.yaw / m.t) * 60 : 0).toFixed(2)]));
+  const blob = new Blob([rows.map((r) => r.join(',')).join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'okcorral-sensor.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+function renderMarks() {
+  const tb = $('marks');
+  if (!marks.length) {
+    tb.innerHTML = '<tr><td colspan="4" style="color:var(--dim);text-align:center">no marks yet</td></tr>';
+    $('verdict').textContent = 'Enable motion and take a few marks.';
+    return;
+  }
+  tb.innerHTML = marks.map((m, i) => {
+    const rate = m.t > 1 ? (m.yaw / m.t) * 60 : 0;
+    return `<tr><td>${i + 1}</td><td>${m.t.toFixed(1)}</td><td>${fmt(m.yaw)}&deg;</td><td>${fmt(rate)}&deg;/min</td></tr>`;
+  }).join('');
+  verdict();
+}
+
+function verdict() {
+  const last = marks[marks.length - 1];
+  const rate = last.t > 5 ? Math.abs((last.yaw / last.t) * 60) : null;
+  const parts = [];
+  if (S.hz < 25) parts.push(`<span class="warn">Event rate is ${S.hz.toFixed(0)} Hz</span> — below 25 Hz the view will feel laggy.`);
+  else parts.push(`<span class="ok">Event rate ${S.hz.toFixed(0)} Hz.</span>`);
+
+  if (rate === null) parts.push('Take a mark after at least a few seconds to estimate drift.');
+  else if (rate < 3) parts.push(`<span class="ok">Drift ~${rate.toFixed(1)}&deg;/min.</span> Comfortably good enough — abstract seats hide this entirely.`);
+  else if (rate < 10) parts.push(`<span class="warn">Drift ~${rate.toFixed(1)}&deg;/min.</span> Playable, but expect to lose a target you were tracking over a long round.`);
+  else parts.push(`<span class="no">Drift ~${rate.toFixed(1)}&deg;/min.</span> Too much — a 4 minute round would rotate the world most of a seat width.`);
+
+  $('verdict').innerHTML = parts.join('<br>');
+}
+
+// --- compass rose --------------------------------------------------------
+const cv = $('rose');
+const ctx = cv.getContext('2d');
+
+function resize() {
+  const r = cv.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function drawRose() {
+  const w = cv.clientWidth, h = cv.clientHeight;
+  const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 - 14;
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.strokeStyle = '#3a2e24';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+
+  // Ticks every 30 degrees, in the rotating frame so you can watch drift directly.
+  for (let a = 0; a < 360; a += 30) {
+    const t = ((a - deg(S.yaw)) * Math.PI) / 180;
+    const inner = a % 90 === 0 ? R - 12 : R - 6;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.sin(t) * inner, cy - Math.cos(t) * inner);
+    ctx.lineTo(cx + Math.sin(t) * R, cy - Math.cos(t) * R);
+    ctx.strokeStyle = a === 0 ? '#d98032' : '#4a3b2e';
+    ctx.lineWidth = a === 0 ? 2 : 1;
+    ctx.stroke();
+  }
+
+  // The 20 degree view cone, so the narrowness is visible rather than theoretical.
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, R, -Math.PI / 2 - (10 * Math.PI) / 180, -Math.PI / 2 + (10 * Math.PI) / 180);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(217,128,50,0.22)';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx, cy - R);
+  ctx.strokeStyle = '#e8dcc8';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#9a8873';
+  ctx.font = '11px ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('you', cx, cy + 16);
+}
+
+function loop() {
+  $('yaw').textContent = S.receiving ? `${fmt(deg(S.yaw))}°` : '—';
+  $('pitch').textContent = S.receiving ? `${fmt(deg(S.pitch))}°` : '—';
+  $('rawYaw').textContent = S.receiving ? `${fmt(deg(S.rawYaw))}°` : '—';
+  $('abg').textContent = S.receiving
+    ? `${fmt(S.raw.alpha, 0)} ${fmt(S.raw.beta, 0)} ${fmt(S.raw.gamma, 0)}` : '—';
+  $('quat').textContent = S.receiving
+    ? `${S.quat.x.toFixed(2)} ${S.quat.y.toFixed(2)} ${S.quat.z.toFixed(2)} ${S.quat.w.toFixed(2)}` : '—';
+  $('rate').textContent = S.receiving ? `${S.hz.toFixed(0)} Hz · ${S.samples} samples` : '—';
+  drawRose();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

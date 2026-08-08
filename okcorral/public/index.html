@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+<meta name="theme-color" content="#14100d">
+<title>OK Corral</title>
+<style>
+  :root {
+    --bg: #14100d;
+    --panel: #1e1813;
+    --line: #3a2e24;
+    --ink: #e8dcc8;
+    --dim: #9a8873;
+    --hot: #d98032;
+    --blood: #b5372c;
+    --good: #7fbf6a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.45 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+  }
+  .screen { position: fixed; inset: 0; display: none; flex-direction: column; }
+  .screen.on { display: flex; }
+  .pad { padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); max-width: 480px; margin: 0 auto; width: 100%; }
+
+  h1 { font-size: 15px; letter-spacing: .22em; text-transform: uppercase; margin: 0 0 4px; color: var(--hot); }
+  h2 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin: 22px 0 8px; font-weight: 600; }
+  .lede { font-size: 26px; line-height: 1.15; margin: 0 0 6px; letter-spacing: -.01em; }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 20px; }
+
+  input, button {
+    font: inherit; color: var(--ink); border-radius: 9px; touch-action: manipulation;
+  }
+  input {
+    width: 100%; background: #100c09; border: 1px solid var(--line);
+    padding: 13px 14px; margin-bottom: 10px;
+  }
+  input:focus { outline: none; border-color: var(--hot); }
+  button {
+    background: #2b221a; border: 1px solid var(--line); padding: 13px 16px; cursor: pointer; width: 100%;
+  }
+  button:active { background: #3a2d22; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--hot); border-color: var(--hot); color: #1a1209; font-weight: 700; letter-spacing: .04em; }
+  .btns { display: flex; gap: 8px; margin-top: 10px; }
+
+  ul.roster { list-style: none; padding: 0; margin: 0; }
+  ul.roster li {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px;
+    background: var(--panel);
+  }
+  ul.roster li .tag { color: var(--dim); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+  ul.roster li.dead { opacity: .45; }
+  ul.roster li.outlaw .tag { color: var(--blood); }
+
+  .note { color: var(--dim); font-size: 12.5px; line-height: 1.55; }
+  a { color: var(--hot); }
+
+  /* ---- game ---- */
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+
+  #cross {
+    position: absolute; left: 50%; top: 50%; width: 46px; height: 46px;
+    transform: translate(-50%, -50%);
+  }
+  #cross .arm { position: absolute; background: rgba(232,220,200,.75); }
+  #cross .arm.h { left: 0; right: 0; top: 50%; height: 1px; }
+  #cross .arm.v { top: 0; bottom: 0; left: 50%; width: 1px; }
+  #cross .gap { position: absolute; inset: 40% 40%; background: transparent; }
+  #cross.locked .arm { background: var(--blood); box-shadow: 0 0 8px rgba(181,55,44,.8); }
+
+  .hudbar {
+    position: absolute; left: 0; right: 0; display: flex; justify-content: space-between;
+    padding: calc(10px + env(safe-area-inset-top)) 14px 10px; font-size: 12.5px;
+    text-shadow: 0 1px 3px rgba(0,0,0,.8); font-variant-numeric: tabular-nums;
+  }
+  .hudbar .cell { display: flex; gap: 6px; align-items: baseline; }
+  .hudbar .k { color: rgba(232,220,200,.55); }
+
+  #log {
+    position: absolute; left: 14px; right: 14px; top: 46%;
+    text-align: center; font-size: 14px; text-shadow: 0 1px 4px rgba(0,0,0,.9);
+    display: flex; flex-direction: column; gap: 4px; align-items: center;
+  }
+  #log div { opacity: 0; animation: rise 5.5s ease-out forwards; }
+  #log div.hit { color: #ffb15e; }
+  @keyframes rise {
+    0% { opacity: 0; transform: translateY(6px); }
+    8% { opacity: 1; transform: translateY(0); }
+    72% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-10px); }
+  }
+
+  #fire {
+    position: absolute; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: 86px; height: 86px; border-radius: 50%;
+    background: rgba(181,55,44,.9); border: 2px solid rgba(255,220,190,.5);
+    color: #fff3e2; font-size: 12px; letter-spacing: .12em; font-weight: 700;
+    pointer-events: auto; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #fire:active { background: rgba(214,70,55,1); }
+  #fire.reloading { background: rgba(60,48,40,.85); border-color: rgba(232,220,200,.2); color: var(--dim); }
+  #fire.dead { display: none; }
+
+  #reload {
+    position: absolute; left: 50%; bottom: calc(122px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: 110px; height: 3px; background: rgba(0,0,0,.45); border-radius: 2px; overflow: hidden;
+  }
+  #reload i { display: block; height: 100%; width: 0%; background: var(--hot); }
+
+  #flashOverlay {
+    position: absolute; inset: 0; background: #fff; opacity: 0; mix-blend-mode: screen;
+  }
+  #hurt { position: absolute; inset: 0; box-shadow: inset 0 0 120px 30px rgba(181,55,44,.85); opacity: 0; }
+
+  #roleCard {
+    position: fixed; inset: 0; background: rgba(20,16,13,.97);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 30px; gap: 6px; z-index: 20;
+  }
+  #roleCard .r { font-size: 40px; letter-spacing: .04em; font-weight: 700; }
+  #roleCard.town .r { color: var(--good); }
+  #roleCard.outlaw .r { color: var(--blood); }
+  #roleCard .d { color: var(--dim); font-size: 14px; max-width: 320px; line-height: 1.6; }
+  #roleCard button { max-width: 260px; margin-top: 22px; }
+
+  #ghost {
+    position: absolute; left: 0; right: 0; bottom: calc(24px + env(safe-area-inset-bottom));
+    text-align: center; color: var(--dim); font-size: 12.5px; letter-spacing: .1em;
+    text-transform: uppercase; text-shadow: 0 1px 4px rgba(0,0,0,.9); display: none;
+  }
+  #ghost.on { display: block; }
+
+  .scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; height: 100%; }
+</style>
+</head>
+<body>
+
+<!-- ------------------------------------------------------------------ join -->
+<section class="screen on" id="sJoin"><div class="scroll"><div class="pad">
+  <h1>OK Corral</h1>
+  <p class="lede">Everyone can shoot.<br>Only some of you should.</p>
+  <p class="sub">
+    Your phone is the only way to see. Turn your body to look around — the view is narrow
+    enough that you can watch about one person at a time. Outlaws want to fire while nobody
+    is watching them.
+  </p>
+
+  <input id="name" placeholder="your name" maxlength="16" autocomplete="off" autocapitalize="words">
+  <input id="room" placeholder="room code" value="CORRAL" maxlength="8" autocomplete="off" autocapitalize="characters">
+  <button class="primary" id="btnJoin">Ride in</button>
+
+  <p class="note" style="margin-top:22px">
+    Sensors need HTTPS on iOS. If looking around does nothing, check
+    <a href="/diag.html">the sensor page</a> first.
+  </p>
+</div></div></section>
+
+<!-- ----------------------------------------------------------------- lobby -->
+<section class="screen" id="sLobby"><div class="scroll"><div class="pad">
+  <h1>OK Corral</h1>
+  <p class="lede" id="lobbyCode">CORRAL</p>
+  <p class="sub" id="lobbyHint">Waiting for the host to call it.</p>
+
+  <h2>In the ring</h2>
+  <ul class="roster" id="lobbyList"></ul>
+
+  <div class="btns" id="hostBtns" hidden>
+    <button id="btnBot">Add bot</button>
+    <button class="primary" id="btnStart">Start round</button>
+  </div>
+
+  <h2>How it goes</h2>
+  <p class="note">
+    Seats in the ring are assigned at random and have nothing to do with where you are
+    standing — sit wherever you like. Everyone hears every shot at the same instant, so the
+    room gives away nothing. <b>You only learn who fired by looking at them.</b> That goes for
+    the victim too. Town wins by killing the outlaws or by outlasting the clock, which is
+    what forces the outlaws to make a move.
+  </p>
+</div></div></section>
+
+<!-- ------------------------------------------------------------------ game -->
+<section class="screen" id="sGame">
+  <canvas id="view"></canvas>
+  <div id="hud">
+    <div class="hudbar">
+      <div class="cell"><span class="k">alive</span><span id="hAlive">—</span></div>
+      <div class="cell"><span id="hRole">—</span></div>
+      <div class="cell"><span class="k">clock</span><span id="hClock">—</span></div>
+    </div>
+    <div id="cross"><div class="arm h"></div><div class="arm v"></div></div>
+    <div id="log"></div>
+    <div id="reload"><i id="reloadBar"></i></div>
+    <button id="fire">FIRE</button>
+    <div id="ghost">you are dead &middot; you can still watch</div>
+    <div id="flashOverlay"></div>
+    <div id="hurt"></div>
+  </div>
+  <div id="roleCard" hidden>
+    <div class="r" id="roleName">TOWN</div>
+    <div class="d" id="roleDesc"></div>
+    <button class="primary" id="btnReady">Point at something and tap</button>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------------ over -->
+<section class="screen" id="sOver"><div class="scroll"><div class="pad">
+  <h1>Round over</h1>
+  <p class="lede" id="overWinner">—</p>
+  <p class="sub" id="overSub"></p>
+  <h2>Who was who</h2>
+  <ul class="roster" id="overList"></ul>
+  <div class="btns"><button class="primary" id="btnAgain">Back to the lobby</button></div>
+</div></div></section>
+
+<script type="importmap">
+{ "imports": { "three": "/vendor/three.module.js" } }
+</script>
+<script type="module" src="./js/game.js"></script>
+</body>
+</html>

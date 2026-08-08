@@ -1,0 +1,15 @@
+{
+  "name": "okcorral",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Social deduction through a phone-shaped window",
+  "type": "module",
+  "scripts": {
+    "start": "node server/server.js",
+    "bots": "node server/server.js --bots=6"
+  },
+  "dependencies": {
+    "three": "^0.169.0",
+    "ws": "^8.18.0"
+  }
+}
